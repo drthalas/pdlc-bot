@@ -6,6 +6,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+VALID_TASK_STATUSES = frozenset(
+    {
+        "created",
+        "analyzed",
+        "planned",
+        "prompt_ready",
+        "failed",
+        "cancelled",
+    }
+)
+
+
 @dataclass(frozen=True)
 class TaskRecord:
     task_id: str
@@ -60,6 +72,41 @@ class TaskStore:
             workspace_path=workspace_path,
             created_at=created_at,
         )
+
+    def get_task(self, task_id: str) -> TaskRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT task_id, project_name, status, workspace_path, created_at
+                FROM tasks
+                WHERE task_id = ?
+                """,
+                (task_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return TaskRecord(
+            task_id=row[0],
+            project_name=row[1],
+            status=row[2],
+            workspace_path=row[3],
+            created_at=row[4],
+        )
+
+    def update_status(self, task_id: str, status: str) -> bool:
+        if status not in VALID_TASK_STATUSES:
+            allowed = ", ".join(sorted(VALID_TASK_STATUSES))
+            raise ValueError(f"Invalid task status '{status}'. Expected one of: {allowed}")
+
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE tasks SET status = ? WHERE task_id = ?",
+                (status, task_id),
+            )
+
+        return cursor.rowcount > 0
 
     def recent_tasks(self, limit: int = 10) -> list[TaskRecord]:
         with self._connect() as connection:

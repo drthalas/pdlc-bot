@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -13,8 +14,7 @@ from app.orchestrator import Orchestrator
 logger = logging.getLogger(__name__)
 
 
-def _allowed_user_ids() -> set[int]:
-    raw_value = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
+def parse_allowed_user_ids(raw_value: str) -> set[int]:
     allowed: set[int] = set()
     for item in raw_value.split(","):
         item = item.strip()
@@ -27,12 +27,20 @@ def _allowed_user_ids() -> set[int]:
     return allowed
 
 
-def _is_allowed(update: Update) -> bool:
-    allowed = _allowed_user_ids()
-    if not allowed:
+def is_user_allowed(user_id: int | None, allowed_user_ids: set[int]) -> bool:
+    if not allowed_user_ids:
         return True
+    return user_id is not None and user_id in allowed_user_ids
+
+
+def _allowed_user_ids() -> set[int]:
+    return parse_allowed_user_ids(os.getenv("TELEGRAM_ALLOWED_USER_IDS", ""))
+
+
+def _is_allowed(update: Update) -> bool:
     user = update.effective_user
-    return user is not None and user.id in allowed
+    user_id = user.id if user is not None else None
+    return is_user_allowed(user_id, _allowed_user_ids())
 
 
 async def _guard(update: Update) -> bool:
@@ -83,6 +91,39 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("\n".join(lines))
 
 
+async def task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /task TASK-0001")
+        return
+
+    task_id = context.args[0].strip()
+    orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
+    record = orchestrator.store.get_task(task_id)
+    if record is None:
+        await update.message.reply_text(f"Task {task_id} not found.")
+        return
+
+    project_name = record.project_name or "not detected"
+    lines = [
+        record.task_id,
+        "",
+        f"Project: {project_name}",
+        f"Status: {record.status}",
+        f"Workspace: {record.workspace_path}",
+    ]
+
+    workspace_path = Path(record.workspace_path)
+    if workspace_path.exists() and workspace_path.is_dir():
+        artifacts = sorted(path.name for path in workspace_path.iterdir() if path.is_file())
+        if artifacts:
+            lines.extend(["", "Artifacts:"])
+            lines.extend(f"- {artifact}" for artifact in artifacts)
+
+    await update.message.reply_text("\n".join(lines))
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
@@ -112,6 +153,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("projects", projects))
     application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("task", task))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     return application
 

@@ -2,9 +2,27 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
+
+
+WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
+
+
+def _normalized_words(text: str) -> list[str]:
+    return [match.group(0).casefold() for match in WORD_RE.finditer(text)]
+
+
+def _contains_word_sequence(words: list[str], candidate: list[str]) -> bool:
+    if not candidate or len(candidate) > len(words):
+        return False
+    candidate_length = len(candidate)
+    for index in range(len(words) - candidate_length + 1):
+        if words[index : index + candidate_length] == candidate:
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -69,9 +87,9 @@ class ProjectRegistry:
         return self._projects.get(key)
 
     def find_in_text(self, text: str) -> Project | None:
-        normalized = text.lower()
+        words = _normalized_words(text)
         candidates = sorted(self._alias_index, key=len, reverse=True)
         for candidate in candidates:
-            if candidate and candidate in normalized:
+            if _contains_word_sequence(words, _normalized_words(candidate)):
                 return self._projects[self._alias_index[candidate]]
         return None

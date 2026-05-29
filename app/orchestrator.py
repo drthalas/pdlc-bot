@@ -42,12 +42,14 @@ class Orchestrator:
         intake = self.intake_agent.analyze(text)
         record = self.store.reserve_task(
             project_name=intake.project.name if intake.project else None,
-            workspace_path=str(self.workspace.tasks_dir / "PENDING"),
+            workspace_path_template=str(self.workspace.tasks_dir / "PENDING"),
         )
         task_path = self.workspace.create(record.task_id)
 
         brief = self.analyst_agent.create_brief(intake)
+        self.store.update_status(record.task_id, "analyzed")
         plan = self.architect_agent.create_plan(intake)
+        self.store.update_status(record.task_id, "planned")
         prompt = self.codex_prompt_agent.create_prompt(record.task_id, intake, brief, plan)
 
         self.workspace.write_text(record.task_id, "input.md", f"{intake.raw_request}\n")
@@ -59,22 +61,28 @@ class Orchestrator:
         self.workspace.write_text(record.task_id, "analysis.md", brief)
         self.workspace.write_text(record.task_id, "implementation_plan.md", plan)
         self.workspace.write_text(record.task_id, "codex_prompt.md", prompt)
+        self.store.update_status(record.task_id, "prompt_ready")
 
         response = self._response_text(record.task_id, task_path, intake.project.name if intake.project else None)
+        stored_record = self.store.get_task(record.task_id) or record
         return OrchestrationResult(
             record=TaskRecord(
-                task_id=record.task_id,
-                project_name=record.project_name,
-                status=record.status,
+                task_id=stored_record.task_id,
+                project_name=stored_record.project_name,
+                status=stored_record.status,
                 workspace_path=str(task_path),
-                created_at=record.created_at,
+                created_at=stored_record.created_at,
             ),
             project_detected=intake.project is not None,
             response_text=response,
         )
 
     def _response_text(self, task_id: str, task_path: object, project_name: str | None) -> str:
-        project_line = f"Project: {project_name}" if project_name else "Project: not detected"
+        project_line = (
+            f"Project: {project_name}"
+            if project_name
+            else "Project: not detected. Please mention a project name or alias from /projects."
+        )
         return (
             f"Created {task_id}\n"
             f"{project_line}\n"

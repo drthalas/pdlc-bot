@@ -2,11 +2,11 @@
 
 Local Telegram-based PDLC orchestration bot for creating development task workspaces and Codex-ready prompts.
 
-Version `0.1` only creates local artifacts and Telegram responses. It does not edit code, run shell commands, run Git, call GitHub, or call the Codex CLI.
+Version `0.1` only creates local artifacts and Telegram responses. It does not edit code, run shell commands, run Git, call GitHub, create pull requests, or call the Codex CLI.
 
 ## Features
 
-- Telegram commands: `/start`, `/projects`, `/status`
+- Telegram commands: `/start`, `/projects`, `/status`, `/task <TASK-ID>`
 - Telegram text messages become local development tasks
 - Optional Telegram user allowlist
 - YAML project registry with names and aliases
@@ -22,7 +22,7 @@ Version `0.1` only creates local artifacts and Telegram responses. It does not e
 ## Install
 
 ```bash
-python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -47,7 +47,7 @@ Optionally restrict access to specific Telegram users:
 TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
 ```
 
-If `TELEGRAM_ALLOWED_USER_IDS` is empty, any Telegram user who can reach the bot is allowed.
+If `TELEGRAM_ALLOWED_USER_IDS` is empty, any Telegram user who can reach the bot is allowed. Do not leave it empty when running the bot with a real Telegram token.
 
 ## Configure Projects
 
@@ -86,12 +86,14 @@ Project names and aliases are matched against incoming Telegram task text.
 Run the Telegram bot:
 
 ```bash
+source .venv/bin/activate
 python -m app.telegram_bot
 ```
 
 Run the optional FastAPI status API:
 
 ```bash
+source .venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
@@ -106,7 +108,8 @@ Useful endpoints:
 1. Send a task message to the Telegram bot.
 2. The bot detects the project by name or alias.
 3. The bot creates a task folder like `tasks/TASK-0001`.
-4. Review `codex_prompt.md`.
-5. Use the prompt manually with Codex when ready.
+4. Use `/task TASK-0001` to review the task status, workspace, and generated artifacts.
+5. Review `codex_prompt.md`.
+6. Use the prompt manually with Codex when ready.
 
 This first version intentionally avoids automatic code editing or remote service calls.
