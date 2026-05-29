@@ -1,0 +1,8 @@
+app:
+  name: pdlc-bot
+  environment: local
+
+paths:
+  projects_config: config/projects.yaml
+  tasks_dir: tasks
+  database_path: tasks/pdlc_bot.sqlite3

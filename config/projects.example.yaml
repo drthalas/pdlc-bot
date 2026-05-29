@@ -1,0 +1,18 @@
+projects:
+  - name: example-api
+    aliases:
+      - api
+      - backend
+    repo_url: https://github.com/example/example-api.git
+    local_path: /path/to/example-api
+    stack:
+      - Python
+      - FastAPI
+      - SQLite
+    context_files:
+      - README.md
+      - pyproject.toml
+      - app/main.py
+    test_commands:
+      - pytest
+    risk_level: medium
