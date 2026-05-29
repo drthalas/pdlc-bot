@@ -9,7 +9,9 @@ from app.agents.codex_prompt_agent import CodexPromptAgent
 from app.agents.intake_agent import IntakeAgent
 from app.project_registry import ProjectRegistry
 from app.task_store import TaskRecord, TaskStore
+from app.task_messages import format_task_created_response
 from app.task_workspace import TaskWorkspace
+from app.task_workspace import list_artifacts
 
 
 @dataclass(frozen=True)
@@ -63,29 +65,21 @@ class Orchestrator:
         self.workspace.write_text(record.task_id, "codex_prompt.md", prompt)
         self.store.update_status(record.task_id, "prompt_ready")
 
-        response = self._response_text(record.task_id, task_path, intake.project.name if intake.project else None)
         stored_record = self.store.get_task(record.task_id) or record
+        response_record = TaskRecord(
+            task_id=stored_record.task_id,
+            project_name=stored_record.project_name,
+            status=stored_record.status,
+            workspace_path=str(task_path),
+            created_at=stored_record.created_at,
+        )
+        response = format_task_created_response(
+            response_record,
+            project_detected=intake.project is not None,
+            artifacts=list_artifacts(task_path),
+        )
         return OrchestrationResult(
-            record=TaskRecord(
-                task_id=stored_record.task_id,
-                project_name=stored_record.project_name,
-                status=stored_record.status,
-                workspace_path=str(task_path),
-                created_at=stored_record.created_at,
-            ),
+            record=response_record,
             project_detected=intake.project is not None,
             response_text=response,
-        )
-
-    def _response_text(self, task_id: str, task_path: object, project_name: str | None) -> str:
-        project_line = (
-            f"Project: {project_name}"
-            if project_name
-            else "Project: not detected. Please mention a project name or alias from /projects."
-        )
-        return (
-            f"Created {task_id}\n"
-            f"{project_line}\n"
-            f"Workspace: {task_path}\n"
-            "Artifacts: input.md, project.json, analysis.md, implementation_plan.md, codex_prompt.md"
         )

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.orchestrator import Orchestrator
+from app.task_messages import build_prompt_response, format_task_details_response
+from app.task_workspace import list_artifacts
 
 
 logger = logging.getLogger(__name__)
@@ -105,23 +106,25 @@ async def task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(f"Task {task_id} not found.")
         return
 
-    project_name = record.project_name or "not detected"
-    lines = [
-        record.task_id,
-        "",
-        f"Project: {project_name}",
-        f"Status: {record.status}",
-        f"Workspace: {record.workspace_path}",
-    ]
+    await update.message.reply_text(
+        format_task_details_response(
+            record,
+            artifacts=list_artifacts(record.workspace_path),
+        )
+    )
 
-    workspace_path = Path(record.workspace_path)
-    if workspace_path.exists() and workspace_path.is_dir():
-        artifacts = sorted(path.name for path in workspace_path.iterdir() if path.is_file())
-        if artifacts:
-            lines.extend(["", "Artifacts:"])
-            lines.extend(f"- {artifact}" for artifact in artifacts)
 
-    await update.message.reply_text("\n".join(lines))
+async def prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /prompt TASK-0001")
+        return
+
+    task_id = context.args[0].strip()
+    orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
+    response = build_prompt_response(orchestrator.store, task_id)
+    await update.message.reply_text(response.message)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -154,6 +157,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("projects", projects))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("task", task))
+    application.add_handler(CommandHandler("prompt", prompt))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     return application
 

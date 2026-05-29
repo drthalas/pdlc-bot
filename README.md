@@ -2,11 +2,11 @@
 
 Local Telegram-based PDLC orchestration bot for creating development task workspaces and Codex-ready prompts.
 
-Version `0.1` only creates local artifacts and Telegram responses. It does not edit code, run shell commands, run Git, call GitHub, create pull requests, or call the Codex CLI.
+Version `0.1` creates local task artifacts and a Codex-ready prompt. It does not run the Codex CLI, create branches, commit code, push to Git, call GitHub, or create pull requests.
 
 ## Features
 
-- Telegram commands: `/start`, `/projects`, `/status`, `/task <TASK-ID>`
+- Telegram commands: `/start`, `/projects`, `/status`, `/task <TASK-ID>`, `/prompt <TASK-ID>`
 - Telegram text messages become local development tasks
 - Optional Telegram user allowlist
 - YAML project registry with names and aliases
@@ -109,7 +109,8 @@ Useful endpoints:
 2. The bot detects the project by name or alias.
 3. The bot creates a task folder like `tasks/TASK-0001`.
 4. Use `/task TASK-0001` to review the task status, workspace, and generated artifacts.
-5. Review `codex_prompt.md`.
-6. Use the prompt manually with Codex when ready.
+5. Use `/prompt TASK-0001` to show the generated Codex prompt in Telegram.
+6. Review `codex_prompt.md` in the workspace if the prompt is too long for Telegram.
+7. Use the prompt manually with Codex when ready.
 
-This first version intentionally avoids automatic code editing or remote service calls.
+This first version intentionally avoids automatic code editing, Codex CLI execution, Git branch/commit/push workflows, pull request creation, and other remote service calls.

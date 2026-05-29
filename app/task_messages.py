@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from app.task_store import TaskRecord, TaskStore
+
+
+PROMPT_PREVIEW_LIMIT = 3500
+
+
+@dataclass(frozen=True)
+class PromptResponse:
+    message: str
+    found: bool
+
+
+def format_task_created_response(
+    record: TaskRecord,
+    project_detected: bool,
+    artifacts: list[str],
+) -> str:
+    if not project_detected:
+        return (
+            f"⚠️ Task created: {record.task_id}\n\n"
+            "Project: not detected\n"
+            f"Status: {record.status}\n"
+            f"Workspace: {record.workspace_path}\n\n"
+            "Please mention a project name or alias from /projects next time."
+        )
+
+    project_name = record.project_name or "not detected"
+    lines = [
+        f"✅ Task created: {record.task_id}",
+        "",
+        f"Project: {project_name}",
+        f"Status: {record.status}",
+        f"Workspace: {record.workspace_path}",
+    ]
+    if artifacts:
+        lines.extend(["", "Artifacts:"])
+        lines.extend(f"- {artifact}" for artifact in artifacts)
+
+    lines.extend(
+        [
+            "",
+            "Next:",
+            f"- /task {record.task_id} — show task details",
+            f"- /prompt {record.task_id} — show Codex prompt",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def format_task_details_response(record: TaskRecord, artifacts: list[str]) -> str:
+    project_name = record.project_name or "not detected"
+    lines = [
+        record.task_id,
+        "",
+        f"Project: {project_name}",
+        f"Status: {record.status}",
+        f"Workspace: {record.workspace_path}",
+    ]
+
+    if artifacts:
+        lines.extend(["", "Artifacts:"])
+        lines.extend(f"- {artifact}" for artifact in artifacts)
+
+    return "\n".join(lines)
+
+
+def build_prompt_response(
+    store: TaskStore,
+    task_id: str,
+    preview_limit: int = PROMPT_PREVIEW_LIMIT,
+) -> PromptResponse:
+    record = store.get_task(task_id)
+    if record is None:
+        return PromptResponse(message=f"Task {task_id} not found.", found=False)
+
+    prompt_path = Path(record.workspace_path) / "codex_prompt.md"
+    if not prompt_path.exists() or not prompt_path.is_file():
+        return PromptResponse(message=f"Codex prompt not found for {task_id}.", found=False)
+
+    prompt = prompt_path.read_text(encoding="utf-8")
+    if len(prompt) <= preview_limit:
+        return PromptResponse(message=prompt, found=True)
+
+    preview = prompt[:preview_limit].rstrip()
+    message = (
+        f"{preview}\n\n"
+        f"[Prompt truncated. Full prompt is available at {prompt_path}.]"
+    )
+    return PromptResponse(message=message, found=True)

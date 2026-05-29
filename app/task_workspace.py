@@ -5,6 +5,13 @@ from pathlib import Path
 from typing import Any
 
 
+def list_artifacts(workspace_path: str | Path) -> list[str]:
+    path = Path(workspace_path)
+    if not path.exists() or not path.is_dir():
+        return []
+    return sorted(item.name for item in path.iterdir() if item.is_file())
+
+
 class TaskWorkspace:
     def __init__(self, tasks_dir: str | Path = "tasks") -> None:
         self.tasks_dir = Path(tasks_dir)
