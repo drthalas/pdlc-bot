@@ -2,7 +2,7 @@
 
 Implementation status: started.
 
-Current stage: disabled-by-default UI skeleton plus safe runner preparation modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, `git_check` can run a read-only `git status --porcelain` check before preparing artifacts, and `branch_create` can create a local branch after a clean git check. No actual Codex execution happens yet.
+Current stage: disabled-by-default UI skeleton plus safe runner modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, `git_check` can run a read-only `git status --porcelain` check before preparing artifacts, `branch_create` can create a local branch after a clean git check, and `codex_run` can execute Codex CLI after branch creation. No commit, push, PR, or deploy happens yet.
 
 ## Goal
 
@@ -79,6 +79,12 @@ When the user clicks `Run Codex`:
   git status --porcelain
   ```
   If the initial status is dirty, it saves `git_status_before.txt` and stops. If branch creation fails, for example because the branch already exists, it saves stdout, stderr, and exit code artifacts and stops. If branch creation succeeds, it saves branch artifacts and prepares `run_codex_command.txt` and `run_codex.sh`. It still does not run Codex CLI, run `run_codex.sh`, commit, push, create PRs, or deploy.
+- Codex run mode executes Codex CLI after a clean git check and branch creation:
+  ```text
+  PDLC_CODEX_RUNNER_MODE=codex_run
+  <codex_bin> < <workspace>/codex_prompt.md
+  ```
+  The Codex subprocess uses `shell=False`, stdin from `codex_prompt.md`, and a configurable timeout (`PDLC_CODEX_TIMEOUT_SECONDS`, default `900`). After Codex exits, the runner saves `git diff`, `git diff --stat`, runs project test commands, and writes test/developer reports. It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
 - Never run Codex automatically when a task is created.
 - Run only after an explicit user click.
 - Do not commit.
@@ -178,8 +184,8 @@ Next buttons:
 3. Branch preparation without branch creation. Started with `branch_name.txt` and `git_status_before.txt` placeholder.
 4. Checked git status collection without Codex execution. Started with `git_check`.
 5. Branch creation only after explicit approval. Started with `branch_create`.
-6. Actual Codex CLI execution.
-7. Logs/artifacts capture.
-8. Test runner.
+6. Actual Codex CLI execution. Started with `codex_run`.
+7. Logs/artifacts capture. Started with `codex_stdout.log`, `codex_stderr.log`, `codex_exit_code.txt`, `diff.patch`, `test_report.md`, and `developer_report.md`.
+8. Test runner. Started with configured project commands and fallback commands.
 9. Telegram report.
 10. Fix loop.

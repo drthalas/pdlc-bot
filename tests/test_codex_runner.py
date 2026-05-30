@@ -9,6 +9,7 @@ from app.codex_runner import (
     build_codex_git_check_message,
     build_codex_prepare_command,
     build_codex_prepare_message,
+    build_codex_run_message,
     build_codex_dry_run_command,
     build_codex_runner_disabled_message,
     get_codex_bin_path,
@@ -19,6 +20,7 @@ from app.codex_runner import (
     write_codex_branch_prepare_artifacts,
     write_codex_branch_create_artifacts,
     write_codex_git_check_artifacts,
+    write_codex_run_artifacts,
     write_codex_prepare_artifacts,
 )
 from app.task_store import TaskRecord
@@ -84,6 +86,12 @@ def test_codex_runner_branch_create_mode_is_recognized(monkeypatch):
     monkeypatch.setenv("PDLC_CODEX_RUNNER_MODE", "branch_create")
 
     assert get_codex_runner_mode() == "branch_create"
+
+
+def test_codex_runner_codex_run_mode_is_recognized(monkeypatch):
+    monkeypatch.setenv("PDLC_CODEX_RUNNER_MODE", "codex_run")
+
+    assert get_codex_runner_mode() == "codex_run"
 
 
 def test_codex_prepare_command_uses_project_path_and_prompt(monkeypatch, tmp_path):
@@ -503,3 +511,156 @@ def test_create_git_branch_uses_only_checkout_new_branch(monkeypatch):
             },
         )
     ]
+
+
+def test_codex_run_clean_flow_creates_branch_invokes_codex_and_tests(monkeypatch, tmp_path):
+    monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
+    monkeypatch.setenv("PDLC_CODEX_TIMEOUT_SECONDS", "123")
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("Add persistent menu\n", encoding="utf-8")
+    (workspace / "codex_prompt.md").write_text("Do the task.\n", encoding="utf-8")
+    (workspace / "project.json").write_text(
+        '{"local_path": "/tmp/project", "test_commands": ["pytest -q", "python -m app.main"]}\n',
+        encoding="utf-8",
+    )
+    task = make_task(workspace)
+    status_calls = []
+    branch_calls = []
+    command_calls = []
+
+    def fake_status(local_path: str) -> str:
+        status_calls.append(local_path)
+        return " M app/main.py\n" if len(status_calls) == 2 else ""
+
+    def fake_branch(local_path: str, branch_name: str) -> GitCommandResult:
+        branch_calls.append((local_path, branch_name))
+        return GitCommandResult(stdout="created\n", stderr="", exit_code=0)
+
+    def fake_command(command, local_path, timeout, stdin_path):
+        command_calls.append((command, local_path, timeout, stdin_path))
+        if command == ["/custom/codex"]:
+            return GitCommandResult(stdout="codex ok\n", stderr="", exit_code=0)
+        if command == ["git", "diff"]:
+            return GitCommandResult(stdout="diff --git a/app/main.py b/app/main.py\n", stderr="", exit_code=0)
+        if command == ["git", "diff", "--stat"]:
+            return GitCommandResult(stdout=" app/main.py | 1 +\n", stderr="", exit_code=0)
+        return GitCommandResult(stdout="tests ok\n", stderr="", exit_code=0)
+
+    result = write_codex_run_artifacts(
+        task,
+        git_status_reader=fake_status,
+        branch_creator=fake_branch,
+        command_runner=fake_command,
+    )
+
+    assert status_calls == ["/tmp/project", "/tmp/project"]
+    assert branch_calls == [("/tmp/project", "agent/TASK-0007-add-persistent-menu")]
+    assert command_calls[0] == (["/custom/codex"], "/tmp/project", 123, workspace / "codex_prompt.md")
+    assert ["git", "diff"] in [call[0] for call in command_calls]
+    assert ["git", "diff", "--stat"] in [call[0] for call in command_calls]
+    assert ["pytest", "-q"] in [call[0] for call in command_calls]
+    assert ["python", "-m", "app.main"] in [call[0] for call in command_calls]
+    assert result.codex_ran is True
+    assert result.codex_exit_code == 0
+    assert result.tests_passed is True
+    assert result.branch_name == "agent/TASK-0007-add-persistent-menu"
+    assert result.codex_stdout_path.read_text(encoding="utf-8") == "codex ok\n"
+    assert result.codex_exit_code_path.read_text(encoding="utf-8") == "0\n"
+    assert result.diff_path.read_text(encoding="utf-8").startswith("diff --git")
+    assert "pytest -q" in result.test_report_path.read_text(encoding="utf-8")
+    assert "No commit, push, PR, or deploy was performed." in result.developer_report_path.read_text(encoding="utf-8")
+
+    message = build_codex_run_message(task, result)
+    assert "Codex finished" in message
+    assert "Branch: agent/TASK-0007-add-persistent-menu" in message
+    assert "Tests: passed" in message
+    assert "No commit/push/deploy was performed" in message
+
+
+def test_codex_run_dirty_flow_stops_before_branch_or_codex(tmp_path):
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = make_task(workspace)
+    branch_calls = []
+    command_calls = []
+
+    result = write_codex_run_artifacts(
+        task,
+        git_status_reader=lambda local_path: " M app/main.py\n",
+        branch_creator=lambda local_path, branch_name: branch_calls.append((local_path, branch_name)),
+        command_runner=lambda command, local_path, timeout, stdin_path: command_calls.append(command),
+    )
+
+    assert result.is_clean is False
+    assert result.branch_created is False
+    assert result.codex_ran is False
+    assert branch_calls == []
+    assert command_calls == []
+    assert result.git_status_before_path.read_text(encoding="utf-8") == " M app/main.py\n"
+
+
+def test_codex_run_non_zero_exit_saves_logs_and_report(monkeypatch, tmp_path):
+    monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("Add persistent menu\n", encoding="utf-8")
+    (workspace / "codex_prompt.md").write_text("Do the task.\n", encoding="utf-8")
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = make_task(workspace)
+
+    def fake_command(command, local_path, timeout, stdin_path):
+        if command == ["/custom/codex"]:
+            return GitCommandResult(stdout="", stderr="codex failed\n", exit_code=2)
+        if command == ["git", "diff"]:
+            return GitCommandResult(stdout="", stderr="", exit_code=0)
+        if command == ["git", "diff", "--stat"]:
+            return GitCommandResult(stdout="", stderr="", exit_code=0)
+        return GitCommandResult(stdout="tests ok\n", stderr="", exit_code=0)
+
+    result = write_codex_run_artifacts(
+        task,
+        git_status_reader=lambda local_path: "",
+        branch_creator=lambda local_path, branch_name: GitCommandResult(stdout="", stderr="", exit_code=0),
+        command_runner=fake_command,
+    )
+
+    assert result.codex_exit_code == 2
+    assert result.codex_stderr_path.read_text(encoding="utf-8") == "codex failed\n"
+    assert "Codex exited non-zero" in result.developer_report_path.read_text(encoding="utf-8")
+    assert "Codex failed" in build_codex_run_message(task, result)
+
+
+def test_codex_run_does_not_call_commit_push_or_deploy(monkeypatch, tmp_path):
+    monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("Add persistent menu\n", encoding="utf-8")
+    (workspace / "codex_prompt.md").write_text("Do the task.\n", encoding="utf-8")
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = make_task(workspace)
+    commands = []
+
+    def fake_command(command, local_path, timeout, stdin_path):
+        commands.append(command)
+        if command in (["git", "diff"], ["git", "diff", "--stat"]):
+            return GitCommandResult(stdout="", stderr="", exit_code=0)
+        return GitCommandResult(stdout="", stderr="", exit_code=0)
+
+    write_codex_run_artifacts(
+        task,
+        git_status_reader=lambda local_path: "",
+        branch_creator=lambda local_path, branch_name: GitCommandResult(stdout="", stderr="", exit_code=0),
+        command_runner=fake_command,
+    )
+
+    forbidden = [
+        ["git", "commit"],
+        ["git", "push"],
+        ["gh", "pr"],
+        ["railway"],
+    ]
+    for command in commands:
+        assert command[:2] not in forbidden
+        assert command[:1] not in forbidden

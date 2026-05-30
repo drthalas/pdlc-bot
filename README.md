@@ -141,6 +141,7 @@ Runner configuration uses:
 PDLC_ENABLE_CODEX_RUNNER=false
 PDLC_CODEX_RUNNER_MODE=disabled
 PDLC_CODEX_BIN=/opt/homebrew/bin/codex
+PDLC_CODEX_TIMEOUT_SECONDS=900
 ```
 
 Supported runner modes:
@@ -161,6 +162,11 @@ Supported runner modes:
   - if the working tree is dirty, save `git_status_before.txt` and stop;
   - if branch creation fails, save stdout/stderr/exit-code artifacts and stop;
   - if branch creation succeeds, also create `branch_name.txt`, `git_status_after_branch.txt`, `run_codex_command.txt`, and `run_codex.sh`.
+- `codex_run`: after a clean git check and branch creation, run Codex CLI with `codex_prompt.md` as stdin:
+  - saves Codex stdout/stderr/exit-code;
+  - saves `git_status_after.txt`, `diff.patch`, `test_report.md`, and `developer_report.md`;
+  - runs project test commands from `project.json`, falling back to `.venv/bin/pytest` and `.venv/bin/python -m app.main`;
+  - does not commit, push, create PRs, or deploy.
 
 Prepare modes still do not execute Codex CLI, commit, push, or deploy. They only write command text, scripts, and branch-preparation metadata for a human to inspect and run manually.
 
@@ -183,6 +189,19 @@ git status --porcelain
 ```
 
 It still does not execute Codex CLI, run `run_codex.sh`, commit, push, create PRs, or deploy.
+
+`codex_run` is the first mode that may execute Codex CLI. It allows these subprocess command families, with `shell=False` and timeouts:
+
+```bash
+git status --porcelain
+git checkout -b <branch>
+<codex_bin> < codex_prompt.md
+git diff
+git diff --stat
+<project test commands>
+```
+
+It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
 
 ## Mac mini operations
 

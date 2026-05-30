@@ -14,6 +14,7 @@ from app.task_store import TaskRecord
 
 DEFAULT_CODEX_BIN = "/opt/homebrew/bin/codex"
 DEFAULT_CODEX_RUNNER_MODE = "disabled"
+DEFAULT_CODEX_TIMEOUT_SECONDS = 900
 PREPARE_COMMAND_FILENAME = "run_codex_command.txt"
 PREPARE_SCRIPT_FILENAME = "run_codex.sh"
 GIT_STATUS_BEFORE_FILENAME = "git_status_before.txt"
@@ -23,6 +24,13 @@ BRANCH_CREATE_STDOUT_FILENAME = "branch_create_stdout.txt"
 BRANCH_CREATE_STDERR_FILENAME = "branch_create_stderr.txt"
 BRANCH_CREATE_EXIT_CODE_FILENAME = "branch_create_exit_code.txt"
 GIT_STATUS_AFTER_BRANCH_FILENAME = "git_status_after_branch.txt"
+CODEX_STDOUT_FILENAME = "codex_stdout.log"
+CODEX_STDERR_FILENAME = "codex_stderr.log"
+CODEX_EXIT_CODE_FILENAME = "codex_exit_code.txt"
+GIT_STATUS_AFTER_FILENAME = "git_status_after.txt"
+DIFF_FILENAME = "diff.patch"
+TEST_REPORT_FILENAME = "test_report.md"
+DEVELOPER_REPORT_FILENAME = "developer_report.md"
 
 
 def is_codex_runner_enabled() -> bool:
@@ -35,6 +43,15 @@ def get_codex_runner_mode() -> str:
 
 def get_codex_bin_path() -> str:
     return os.getenv("PDLC_CODEX_BIN", DEFAULT_CODEX_BIN).strip() or DEFAULT_CODEX_BIN
+
+
+def get_codex_timeout_seconds() -> int:
+    raw_value = os.getenv("PDLC_CODEX_TIMEOUT_SECONDS", str(DEFAULT_CODEX_TIMEOUT_SECONDS)).strip()
+    try:
+        timeout = int(raw_value)
+    except ValueError:
+        return DEFAULT_CODEX_TIMEOUT_SECONDS
+    return timeout if timeout > 0 else DEFAULT_CODEX_TIMEOUT_SECONDS
 
 
 @dataclass(frozen=True)
@@ -86,6 +103,38 @@ class CodexBranchCreateResult:
     error_message: str | None = None
 
 
+@dataclass(frozen=True)
+class TestCommandResult:
+    command: list[str]
+    stdout: str
+    stderr: str
+    exit_code: int
+
+
+@dataclass(frozen=True)
+class CodexRunResult:
+    is_clean: bool
+    branch_created: bool
+    codex_ran: bool
+    tests_passed: bool
+    git_status_before_path: Path
+    branch_name: str | None = None
+    branch_name_path: Path | None = None
+    branch_stdout_path: Path | None = None
+    branch_stderr_path: Path | None = None
+    branch_exit_code_path: Path | None = None
+    codex_stdout_path: Path | None = None
+    codex_stderr_path: Path | None = None
+    codex_exit_code_path: Path | None = None
+    git_status_after_path: Path | None = None
+    diff_path: Path | None = None
+    test_report_path: Path | None = None
+    developer_report_path: Path | None = None
+    codex_exit_code: int | None = None
+    diff_stat: str = ""
+    error_message: str | None = None
+
+
 def build_codex_runner_disabled_message(task_id: str) -> str:
     return (
         "Codex Runner is disabled.\n\n"
@@ -96,7 +145,7 @@ def build_codex_runner_disabled_message(task_id: str) -> str:
     )
 
 
-def _load_project_local_path(task: TaskRecord) -> str | None:
+def _load_project_payload(task: TaskRecord) -> dict | None:
     project_path = Path(task.workspace_path) / "project.json"
     if not project_path.exists():
         return None
@@ -106,10 +155,29 @@ def _load_project_local_path(task: TaskRecord) -> str | None:
     except (OSError, json.JSONDecodeError):
         return None
 
+    return payload if isinstance(payload, dict) else None
+
+
+def _load_project_local_path(task: TaskRecord) -> str | None:
+    payload = _load_project_payload(task)
+    if payload is None:
+        return None
+
     local_path = payload.get("local_path")
     if isinstance(local_path, str) and local_path.strip():
         return local_path.strip()
     return None
+
+
+def _load_project_test_commands(task: TaskRecord) -> list[str]:
+    payload = _load_project_payload(task)
+    if payload is None:
+        return []
+
+    commands = payload.get("test_commands")
+    if not isinstance(commands, list):
+        return []
+    return [command.strip() for command in commands if isinstance(command, str) and command.strip()]
 
 
 def build_codex_prepare_command(task: TaskRecord, project_local_path: str | None = None) -> str:
@@ -216,6 +284,36 @@ def read_git_status_porcelain(project_local_path: str, timeout: int = GIT_STATUS
     return result.stdout
 
 
+def run_subprocess_command(
+    command: list[str],
+    project_local_path: str,
+    timeout: int,
+    stdin_path: Path | None = None,
+) -> GitCommandResult:
+    stdin_file = None
+    try:
+        if stdin_path is not None:
+            stdin_file = stdin_path.open("r", encoding="utf-8")
+        result = subprocess.run(
+            command,
+            cwd=project_local_path,
+            stdin=stdin_file,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f"{' '.join(command)} timed out after {timeout} seconds") from error
+    except OSError as error:
+        raise RuntimeError(f"{' '.join(command)} failed to start: {error}") from error
+    finally:
+        if stdin_file is not None:
+            stdin_file.close()
+
+    return GitCommandResult(stdout=result.stdout, stderr=result.stderr, exit_code=result.returncode)
+
+
 def create_git_branch(
     project_local_path: str,
     branch_name: str,
@@ -236,6 +334,28 @@ def create_git_branch(
         raise RuntimeError(f"git checkout -b failed to start: {error}") from error
 
     return GitCommandResult(stdout=result.stdout, stderr=result.stderr, exit_code=result.returncode)
+
+
+def read_git_diff(
+    project_local_path: str,
+    command_runner: Callable[[list[str], str, int, Path | None], GitCommandResult] = run_subprocess_command,
+) -> str:
+    result = command_runner(["git", "diff"], project_local_path, GIT_STATUS_TIMEOUT_SECONDS, None)
+    if result.exit_code != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.exit_code}"
+        raise RuntimeError(f"git diff failed: {detail}")
+    return result.stdout
+
+
+def read_git_diff_stat(
+    project_local_path: str,
+    command_runner: Callable[[list[str], str, int, Path | None], GitCommandResult] = run_subprocess_command,
+) -> str:
+    result = command_runner(["git", "diff", "--stat"], project_local_path, GIT_STATUS_TIMEOUT_SECONDS, None)
+    if result.exit_code != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.exit_code}"
+        raise RuntimeError(f"git diff --stat failed: {detail}")
+    return result.stdout
 
 
 def build_git_status_placeholder(project_local_path: str) -> str:
@@ -381,6 +501,200 @@ def write_codex_branch_create_artifacts(
     )
 
 
+def _parse_test_command(command: str) -> list[str]:
+    return shlex.split(command)
+
+
+def _test_commands_for(task: TaskRecord) -> list[str]:
+    configured = _load_project_test_commands(task)
+    if configured:
+        return configured
+    return [".venv/bin/pytest", ".venv/bin/python -m app.main"]
+
+
+def _run_test_commands(
+    task: TaskRecord,
+    project_local_path: str,
+    command_runner: Callable[[list[str], str, int, Path | None], GitCommandResult],
+) -> list[TestCommandResult]:
+    results: list[TestCommandResult] = []
+    for command_text in _test_commands_for(task):
+        command = _parse_test_command(command_text)
+        result = command_runner(command, project_local_path, GIT_STATUS_TIMEOUT_SECONDS, None)
+        results.append(
+            TestCommandResult(
+                command=command,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.exit_code,
+            )
+        )
+    return results
+
+
+def _format_test_report(results: list[TestCommandResult]) -> str:
+    lines = ["# Test Report", ""]
+    if not results:
+        lines.append("No test commands were run.")
+        return "\n".join(lines) + "\n"
+
+    for result in results:
+        command_text = " ".join(shlex.quote(part) for part in result.command)
+        lines.extend(
+            [
+                f"## `{command_text}`",
+                "",
+                f"Exit code: {result.exit_code}",
+                "",
+                "### stdout",
+                "",
+                "```text",
+                result.stdout.rstrip(),
+                "```",
+                "",
+                "### stderr",
+                "",
+                "```text",
+                result.stderr.rstrip(),
+                "```",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _format_developer_report(result: CodexRunResult) -> str:
+    lines = [
+        "# Developer Report",
+        "",
+        f"Branch: {result.branch_name or 'not created'}",
+        f"Codex exit code: {result.codex_exit_code if result.codex_exit_code is not None else 'not run'}",
+        f"Tests passed: {'yes' if result.tests_passed else 'no'}",
+        "",
+        "No commit, push, PR, or deploy was performed.",
+        "",
+        "## Diff Stat",
+        "",
+        "```text",
+        result.diff_stat.rstrip(),
+        "```",
+        "",
+    ]
+    if result.error_message:
+        lines.extend(["## Error", "", result.error_message, ""])
+    return "\n".join(lines)
+
+
+def write_codex_run_artifacts(
+    task: TaskRecord,
+    git_status_reader: Callable[[str], str] = read_git_status_porcelain,
+    branch_creator: Callable[[str, str], GitCommandResult] = create_git_branch,
+    command_runner: Callable[[list[str], str, int, Path | None], GitCommandResult] = run_subprocess_command,
+) -> CodexRunResult:
+    project_local_path = _load_project_local_path(task)
+    if project_local_path is None:
+        raise ValueError(f"Project local_path not found for {task.task_id}.")
+
+    workspace_path = Path(task.workspace_path)
+    workspace_path.mkdir(parents=True, exist_ok=True)
+
+    git_status_before = git_status_reader(project_local_path)
+    git_status_before_path = workspace_path / GIT_STATUS_BEFORE_FILENAME
+    git_status_before_path.write_text(git_status_before, encoding="utf-8")
+
+    if not is_git_status_clean(git_status_before):
+        return CodexRunResult(
+            is_clean=False,
+            branch_created=False,
+            codex_ran=False,
+            tests_passed=False,
+            git_status_before_path=git_status_before_path,
+            error_message="Working tree is dirty.",
+        )
+
+    branch_name = build_branch_name(task)
+    branch_result = branch_creator(project_local_path, branch_name)
+
+    branch_name_path = workspace_path / BRANCH_NAME_FILENAME
+    branch_stdout_path = workspace_path / BRANCH_CREATE_STDOUT_FILENAME
+    branch_stderr_path = workspace_path / BRANCH_CREATE_STDERR_FILENAME
+    branch_exit_code_path = workspace_path / BRANCH_CREATE_EXIT_CODE_FILENAME
+    branch_name_path.write_text(f"{branch_name}\n", encoding="utf-8")
+    branch_stdout_path.write_text(branch_result.stdout, encoding="utf-8")
+    branch_stderr_path.write_text(branch_result.stderr, encoding="utf-8")
+    branch_exit_code_path.write_text(f"{branch_result.exit_code}\n", encoding="utf-8")
+
+    if branch_result.exit_code != 0:
+        detail = branch_result.stderr.strip() or branch_result.stdout.strip() or f"exit code {branch_result.exit_code}"
+        return CodexRunResult(
+            is_clean=True,
+            branch_created=False,
+            codex_ran=False,
+            tests_passed=False,
+            git_status_before_path=git_status_before_path,
+            branch_name=branch_name,
+            branch_name_path=branch_name_path,
+            branch_stdout_path=branch_stdout_path,
+            branch_stderr_path=branch_stderr_path,
+            branch_exit_code_path=branch_exit_code_path,
+            error_message=f"Branch was not created: {detail}",
+        )
+
+    prompt_path = (workspace_path / "codex_prompt.md").resolve()
+    codex_result = command_runner(
+        [get_codex_bin_path()],
+        project_local_path,
+        get_codex_timeout_seconds(),
+        prompt_path,
+    )
+    codex_stdout_path = workspace_path / CODEX_STDOUT_FILENAME
+    codex_stderr_path = workspace_path / CODEX_STDERR_FILENAME
+    codex_exit_code_path = workspace_path / CODEX_EXIT_CODE_FILENAME
+    codex_stdout_path.write_text(codex_result.stdout, encoding="utf-8")
+    codex_stderr_path.write_text(codex_result.stderr, encoding="utf-8")
+    codex_exit_code_path.write_text(f"{codex_result.exit_code}\n", encoding="utf-8")
+
+    git_status_after = git_status_reader(project_local_path)
+    git_status_after_path = workspace_path / GIT_STATUS_AFTER_FILENAME
+    git_status_after_path.write_text(git_status_after, encoding="utf-8")
+
+    diff = read_git_diff(project_local_path, command_runner=command_runner)
+    diff_stat = read_git_diff_stat(project_local_path, command_runner=command_runner)
+    diff_path = workspace_path / DIFF_FILENAME
+    diff_path.write_text(diff, encoding="utf-8")
+
+    test_results = _run_test_commands(task, project_local_path, command_runner)
+    tests_passed = all(result.exit_code == 0 for result in test_results)
+    test_report_path = workspace_path / TEST_REPORT_FILENAME
+    test_report_path.write_text(_format_test_report(test_results), encoding="utf-8")
+
+    partial_result = CodexRunResult(
+        is_clean=True,
+        branch_created=True,
+        codex_ran=True,
+        tests_passed=tests_passed,
+        git_status_before_path=git_status_before_path,
+        branch_name=branch_name,
+        branch_name_path=branch_name_path,
+        branch_stdout_path=branch_stdout_path,
+        branch_stderr_path=branch_stderr_path,
+        branch_exit_code_path=branch_exit_code_path,
+        codex_stdout_path=codex_stdout_path,
+        codex_stderr_path=codex_stderr_path,
+        codex_exit_code_path=codex_exit_code_path,
+        git_status_after_path=git_status_after_path,
+        diff_path=diff_path,
+        test_report_path=test_report_path,
+        developer_report_path=workspace_path / DEVELOPER_REPORT_FILENAME,
+        codex_exit_code=codex_result.exit_code,
+        diff_stat=diff_stat,
+        error_message="Codex exited non-zero." if codex_result.exit_code != 0 else None,
+    )
+    developer_report_path = workspace_path / DEVELOPER_REPORT_FILENAME
+    developer_report_path.write_text(_format_developer_report(partial_result), encoding="utf-8")
+    return partial_result
+
+
 def write_codex_branch_prepare_artifacts(task: TaskRecord) -> CodexBranchPrepareResult:
     project_local_path = _load_project_local_path(task)
     if project_local_path is None:
@@ -513,6 +827,62 @@ def build_codex_branch_create_message(task: TaskRecord, result: CodexBranchCreat
     )
 
 
+def build_codex_run_message(task: TaskRecord, result: CodexRunResult) -> str:
+    if not result.is_clean:
+        return (
+            "Codex Runner codex_run mode.\n"
+            "Working tree is dirty.\n"
+            "No branch was created.\n"
+            "No Codex command was executed.\n"
+            "No commit/push/deploy was performed.\n\n"
+            f"Task: {task.task_id}\n\n"
+            "Artifacts:\n"
+            f"- {result.git_status_before_path}"
+        )
+
+    if not result.branch_created:
+        return (
+            "Codex Runner codex_run mode.\n"
+            f"{result.error_message or 'Branch was not created.'}\n"
+            "No Codex command was executed.\n"
+            "No commit/push/deploy was performed.\n\n"
+            f"Task: {task.task_id}\n"
+            f"Branch: {result.branch_name}\n\n"
+            "Artifacts:\n"
+            f"- {result.git_status_before_path}\n"
+            f"- {result.branch_name_path}\n"
+            f"- {result.branch_stdout_path}\n"
+            f"- {result.branch_stderr_path}\n"
+            f"- {result.branch_exit_code_path}"
+        )
+
+    status = "Codex finished." if result.codex_exit_code == 0 else "Codex failed."
+    tests_status = "passed" if result.tests_passed else "failed"
+    return (
+        "Codex Runner codex_run mode.\n"
+        f"{status}\n"
+        f"Branch: {result.branch_name}\n"
+        f"Codex exit code: {result.codex_exit_code}\n"
+        f"Tests: {tests_status}\n"
+        "No commit/push/deploy was performed.\n\n"
+        "Diff stat:\n"
+        f"{result.diff_stat.strip() or 'no diff'}\n\n"
+        "Artifacts:\n"
+        f"- {result.git_status_before_path}\n"
+        f"- {result.branch_name_path}\n"
+        f"- {result.branch_stdout_path}\n"
+        f"- {result.branch_stderr_path}\n"
+        f"- {result.branch_exit_code_path}\n"
+        f"- {result.codex_stdout_path}\n"
+        f"- {result.codex_stderr_path}\n"
+        f"- {result.codex_exit_code_path}\n"
+        f"- {result.git_status_after_path}\n"
+        f"- {result.diff_path}\n"
+        f"- {result.test_report_path}\n"
+        f"- {result.developer_report_path}"
+    )
+
+
 def build_codex_dry_run_command(task: TaskRecord) -> str:
     return build_codex_prepare_command(task)
 
@@ -528,6 +898,12 @@ def build_codex_dry_run_message(task: TaskRecord) -> str:
 
 def build_codex_runner_response(task: TaskRecord) -> str:
     mode = get_codex_runner_mode()
+    if mode == "codex_run":
+        try:
+            return build_codex_run_message(task, write_codex_run_artifacts(task))
+        except (RuntimeError, ValueError) as error:
+            return f"Codex Runner codex_run mode cannot continue.\n\n{error}"
+
     if mode == "branch_create":
         try:
             return build_codex_branch_create_message(task, write_codex_branch_create_artifacts(task))
