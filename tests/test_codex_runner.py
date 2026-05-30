@@ -2,8 +2,10 @@ import shlex
 from pathlib import Path
 
 from app.codex_runner import (
+    GitCommandResult,
     build_branch_name,
     build_codex_branch_prepare_message,
+    build_codex_branch_create_message,
     build_codex_git_check_message,
     build_codex_prepare_command,
     build_codex_prepare_message,
@@ -15,6 +17,7 @@ from app.codex_runner import (
     is_codex_runner_enabled,
     read_git_status_porcelain,
     write_codex_branch_prepare_artifacts,
+    write_codex_branch_create_artifacts,
     write_codex_git_check_artifacts,
     write_codex_prepare_artifacts,
 )
@@ -69,6 +72,12 @@ def test_codex_runner_git_check_mode_is_recognized(monkeypatch):
     monkeypatch.setenv("PDLC_CODEX_RUNNER_MODE", "git_check")
 
     assert get_codex_runner_mode() == "git_check"
+
+
+def test_codex_runner_branch_create_mode_is_recognized(monkeypatch):
+    monkeypatch.setenv("PDLC_CODEX_RUNNER_MODE", "branch_create")
+
+    assert get_codex_runner_mode() == "branch_create"
 
 
 def test_codex_prepare_command_uses_project_path_and_prompt(monkeypatch, tmp_path):
@@ -321,6 +330,164 @@ def test_read_git_status_uses_only_read_only_git_status(monkeypatch):
     assert calls == [
         (
             ["git", "status", "--porcelain"],
+            {
+                "cwd": "/tmp/project",
+                "capture_output": True,
+                "text": True,
+                "timeout": 3,
+                "check": False,
+            },
+        )
+    ]
+
+
+def test_codex_branch_create_clean_flow_creates_artifacts(monkeypatch, tmp_path):
+    monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("Add persistent menu\n", encoding="utf-8")
+    (workspace / "codex_prompt.md").write_text("Do the task.\n", encoding="utf-8")
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = TaskRecord(
+        task_id="TASK-0007",
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+    status_calls = []
+    branch_calls = []
+
+    def fake_status(local_path: str) -> str:
+        status_calls.append(local_path)
+        return ""
+
+    def fake_branch(local_path: str, branch_name: str) -> GitCommandResult:
+        branch_calls.append((local_path, branch_name))
+        return GitCommandResult(stdout="", stderr="", exit_code=0)
+
+    result = write_codex_branch_create_artifacts(task, git_status_reader=fake_status, branch_creator=fake_branch)
+
+    assert status_calls == ["/tmp/project", "/tmp/project"]
+    assert branch_calls == [("/tmp/project", "agent/TASK-0007-add-persistent-menu")]
+    assert result.is_clean is True
+    assert result.branch_created is True
+    assert result.branch_name == "agent/TASK-0007-add-persistent-menu"
+    assert result.git_status_before_path == workspace / "git_status_before.txt"
+    assert result.branch_name_path == workspace / "branch_name.txt"
+    assert result.branch_stdout_path == workspace / "branch_create_stdout.txt"
+    assert result.branch_stderr_path == workspace / "branch_create_stderr.txt"
+    assert result.branch_exit_code_path == workspace / "branch_create_exit_code.txt"
+    assert result.git_status_after_path == workspace / "git_status_after_branch.txt"
+    assert result.command_path == workspace / "run_codex_command.txt"
+    assert result.script_path == workspace / "run_codex.sh"
+    assert result.branch_exit_code_path.read_text(encoding="utf-8") == "0\n"
+    assert result.script_path.stat().st_mode & 0o111
+
+    message = build_codex_branch_create_message(task, result)
+    assert "Codex Runner branch_create mode" in message
+    assert "Branch created: agent/TASK-0007-add-persistent-menu" in message
+    assert "No Codex command was executed" in message
+    assert "No commit/push was performed" in message
+
+
+def test_codex_branch_create_dirty_flow_does_not_create_branch(tmp_path):
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("Add persistent menu\n", encoding="utf-8")
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = TaskRecord(
+        task_id="TASK-0007",
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+    branch_calls = []
+
+    def fake_branch(local_path: str, branch_name: str) -> GitCommandResult:
+        branch_calls.append((local_path, branch_name))
+        return GitCommandResult(stdout="", stderr="", exit_code=0)
+
+    result = write_codex_branch_create_artifacts(
+        task,
+        git_status_reader=lambda local_path: " M app/main.py\n",
+        branch_creator=fake_branch,
+    )
+
+    assert branch_calls == []
+    assert result.is_clean is False
+    assert result.branch_created is False
+    assert result.git_status_before_path.read_text(encoding="utf-8") == " M app/main.py\n"
+    assert not (workspace / "branch_name.txt").exists()
+
+    message = build_codex_branch_create_message(task, result)
+    assert "Working tree is dirty" in message
+    assert "No branch was created" in message
+
+
+def test_codex_branch_create_existing_branch_error_stops_safely(tmp_path):
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("Add persistent menu\n", encoding="utf-8")
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = TaskRecord(
+        task_id="TASK-0007",
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+
+    def existing_branch(local_path: str, branch_name: str) -> GitCommandResult:
+        return GitCommandResult(
+            stdout="",
+            stderr=f"fatal: a branch named '{branch_name}' already exists\n",
+            exit_code=128,
+        )
+
+    result = write_codex_branch_create_artifacts(
+        task,
+        git_status_reader=lambda local_path: "",
+        branch_creator=existing_branch,
+    )
+
+    assert result.is_clean is True
+    assert result.branch_created is False
+    assert result.branch_exit_code_path.read_text(encoding="utf-8") == "128\n"
+    assert "already exists" in result.branch_stderr_path.read_text(encoding="utf-8")
+    assert not (workspace / "git_status_after_branch.txt").exists()
+    assert not (workspace / "run_codex_command.txt").exists()
+    assert not (workspace / "run_codex.sh").exists()
+
+    message = build_codex_branch_create_message(task, result)
+    assert "Branch was not created" in message
+    assert "already exists" in message
+    assert "No Codex command was executed" in message
+
+
+def test_create_git_branch_uses_only_checkout_new_branch(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = "created\n"
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return Result()
+
+    monkeypatch.setattr("app.codex_runner.subprocess.run", fake_run)
+
+    from app.codex_runner import create_git_branch
+
+    result = create_git_branch("/tmp/project", "agent/TASK-0007-task", timeout=3)
+
+    assert result == GitCommandResult(stdout="created\n", stderr="", exit_code=0)
+    assert calls == [
+        (
+            ["git", "checkout", "-b", "agent/TASK-0007-task"],
             {
                 "cwd": "/tmp/project",
                 "capture_output": True,

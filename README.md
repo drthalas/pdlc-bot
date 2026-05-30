@@ -157,8 +157,12 @@ Supported runner modes:
 - `git_check`: run only a read-only `git status --porcelain` check in the target repo:
   - if the working tree is dirty, save `git_status_before.txt` and stop;
   - if the working tree is clean, also create `branch_name.txt`, `run_codex_command.txt`, and `run_codex.sh`.
+- `branch_create`: run `git status --porcelain`, create a new branch with `git checkout -b <branch>`, then run `git status --porcelain` again:
+  - if the working tree is dirty, save `git_status_before.txt` and stop;
+  - if branch creation fails, save stdout/stderr/exit-code artifacts and stop;
+  - if branch creation succeeds, also create `branch_name.txt`, `git_status_after_branch.txt`, `run_codex_command.txt`, and `run_codex.sh`.
 
-Prepare modes still do not execute Codex CLI, create branches, run subprocesses, commit, push, or deploy. They only write command text, scripts, and branch-preparation metadata for a human to inspect and run manually.
+Prepare modes still do not execute Codex CLI, commit, push, or deploy. They only write command text, scripts, and branch-preparation metadata for a human to inspect and run manually.
 
 `branch_prepare` currently does not execute `git status` from the bot because subprocess execution is intentionally disabled at this stage. It writes a placeholder `git_status_before.txt` with a TODO for the future checked runner.
 
@@ -169,6 +173,16 @@ git status --porcelain
 ```
 
 It still does not execute Codex CLI, create branches, checkout, commit, push, or deploy.
+
+`branch_create` is the first mode that may change the target repo by creating a local branch. It allows only these subprocess commands, with `shell=False` and a timeout:
+
+```bash
+git status --porcelain
+git checkout -b <branch>
+git status --porcelain
+```
+
+It still does not execute Codex CLI, run `run_codex.sh`, commit, push, create PRs, or deploy.
 
 ## Mac mini operations
 
