@@ -2,7 +2,7 @@
 
 Implementation status: started.
 
-Current stage: disabled-by-default UI skeleton. The Telegram button and safe disabled response exist, but no actual Codex execution happens yet.
+Current stage: disabled-by-default UI skeleton plus prepare-command-only mode. The Telegram button exists, the disabled response is safe, and prepare mode can write manual-run artifacts. No actual Codex execution happens yet.
 
 ## Goal
 
@@ -54,6 +54,11 @@ When the user clicks `Run Codex`:
   ```text
   Codex Runner is disabled.
   ```
+- Prepare mode is non-executing:
+  ```text
+  PDLC_CODEX_RUNNER_MODE=prepare
+  ```
+  It writes `run_codex_command.txt` and `run_codex.sh` into the task workspace for manual inspection and manual execution later.
 - Never run Codex automatically when a task is created.
 - Run only after an explicit user click.
 - Do not commit.
@@ -85,6 +90,8 @@ These are not implemented yet.
 Codex Runner should save:
 
 - `codex_prompt.md`
+- `run_codex_command.txt`
+- `run_codex.sh`
 - `codex_stdout.log`
 - `codex_stderr.log`
 - `codex_exit_code.txt`
@@ -142,8 +149,8 @@ Next buttons:
 
 ## Implementation plan
 
-1. Config flag + disabled button.
-2. Runner skeleton without Codex execution: prepare command only.
+1. Config flag + disabled button. Done.
+2. Runner skeleton without Codex execution: prepare command only. Started with `run_codex_command.txt` and `run_codex.sh`.
 3. Branch creation + git status checks.
 4. Actual Codex CLI execution.
 5. Logs/artifacts capture.

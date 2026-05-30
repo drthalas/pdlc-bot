@@ -131,7 +131,24 @@ The bottom menu is for navigation and remains available while using the bot. Inl
 
 The slash commands `/start`, `/projects`, `/status`, `/tasks`, `/task TASK-ID`, and `/prompt TASK-ID` remain available for direct lookup.
 
-Task messages include a `▶️ Run Codex` button, but Codex Runner is disabled by default. This version does not run Codex CLI. Future runner configuration will use `PDLC_ENABLE_CODEX_RUNNER`, `PDLC_CODEX_RUNNER_MODE`, and `PDLC_CODEX_BIN`.
+Task messages include a `▶️ Run Codex` button, but Codex Runner is disabled by default. This version does not run Codex CLI.
+
+Runner configuration uses:
+
+```bash
+PDLC_ENABLE_CODEX_RUNNER=false
+PDLC_CODEX_RUNNER_MODE=disabled
+PDLC_CODEX_BIN=/opt/homebrew/bin/codex
+```
+
+Supported runner modes:
+
+- `disabled`: show a safe message and do nothing.
+- `prepare`: create manual-run artifacts in the task workspace:
+  - `run_codex_command.txt`
+  - `run_codex.sh`
+
+Prepare mode still does not execute Codex CLI, create branches, run subprocesses, commit, push, or deploy. It only writes the command text and script for a human to inspect and run manually.
 
 ## Mac mini operations
 
