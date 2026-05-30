@@ -24,6 +24,16 @@ from app.codex_runner import (
 from app.task_store import TaskRecord
 
 
+def make_task(workspace: Path, task_id: str = "TASK-0007") -> TaskRecord:
+    return TaskRecord(
+        task_id=task_id,
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+
+
 def test_codex_runner_disabled_by_default(monkeypatch):
     monkeypatch.delenv("PDLC_ENABLE_CODEX_RUNNER", raising=False)
     monkeypatch.delenv("PDLC_CODEX_RUNNER_MODE", raising=False)
@@ -42,17 +52,13 @@ def test_codex_runner_disabled_message_contains_safe_context():
     assert "TASK-0007" in message
 
 
-def test_codex_dry_run_command_is_only_text(monkeypatch):
+def test_codex_dry_run_command_is_only_text(monkeypatch, tmp_path):
     monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
-    task = TaskRecord(
-        task_id="TASK-0007",
-        project_name="pdlc-bot",
-        status="prompt_ready",
-        workspace_path="tasks/TASK-0007",
-        created_at="2026-05-30T00:00:00+00:00",
-    )
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    task = make_task(workspace)
 
-    prompt_path = Path("tasks/TASK-0007/codex_prompt.md").resolve()
+    prompt_path = workspace.resolve() / "codex_prompt.md"
     assert build_codex_dry_run_command(task) == f"cd . && /custom/codex < {shlex.quote(str(prompt_path))}"
 
 
