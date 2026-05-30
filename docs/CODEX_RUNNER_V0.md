@@ -82,9 +82,9 @@ When the user clicks `Run Codex`:
 - Codex run mode executes Codex CLI after a clean git check and branch creation:
   ```text
   PDLC_CODEX_RUNNER_MODE=codex_run
-  <codex_bin> < <workspace>/codex_prompt.md
+  <codex_bin> exec -C <project_local_path> - < <workspace>/codex_prompt.md
   ```
-  The Codex subprocess uses `shell=False`, stdin from `codex_prompt.md`, and a configurable timeout (`PDLC_CODEX_TIMEOUT_SECONDS`, default `900`). After Codex exits, the runner saves `git diff`, `git diff --stat`, runs project test commands, and writes test/developer reports. It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
+  The Codex subprocess uses `shell=False`, non-interactive `codex exec`, stdin from `codex_prompt.md`, and a configurable timeout (`PDLC_CODEX_TIMEOUT_SECONDS`, default `900`). The top-level interactive `codex` command must not be used for this path because it expects a terminal. After Codex exits, the runner saves `git diff`, `git diff --stat`, runs project test commands, and writes test/developer reports. It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
 - Never run Codex automatically when a task is created.
 - Run only after an explicit user click.
 - Do not commit.

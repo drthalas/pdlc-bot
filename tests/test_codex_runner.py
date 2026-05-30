@@ -7,6 +7,7 @@ from app.codex_runner import (
     build_codex_branch_prepare_message,
     build_codex_branch_create_message,
     build_codex_git_check_message,
+    build_codex_exec_command_args,
     build_codex_prepare_command,
     build_codex_prepare_message,
     build_codex_run_message,
@@ -61,7 +62,9 @@ def test_codex_dry_run_command_is_only_text(monkeypatch, tmp_path):
     task = make_task(workspace)
 
     prompt_path = workspace.resolve() / "codex_prompt.md"
-    assert build_codex_dry_run_command(task) == f"cd . && /custom/codex < {shlex.quote(str(prompt_path))}"
+    assert build_codex_dry_run_command(task) == (
+        f"cd . && /custom/codex exec -C . - < {shlex.quote(str(prompt_path))}"
+    )
 
 
 def test_codex_runner_prepare_mode_is_recognized(monkeypatch):
@@ -94,6 +97,12 @@ def test_codex_runner_codex_run_mode_is_recognized(monkeypatch):
     assert get_codex_runner_mode() == "codex_run"
 
 
+def test_codex_exec_command_args_use_non_interactive_exec(monkeypatch):
+    monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
+
+    assert build_codex_exec_command_args("/tmp/project") == ["/custom/codex", "exec", "-C", "/tmp/project", "-"]
+
+
 def test_codex_prepare_command_uses_project_path_and_prompt(monkeypatch, tmp_path):
     monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
     workspace = tmp_path / "TASK-0007"
@@ -108,7 +117,7 @@ def test_codex_prepare_command_uses_project_path_and_prompt(monkeypatch, tmp_pat
 
     command = build_codex_prepare_command(task, project_local_path="/tmp/project path")
 
-    assert command == f"cd '/tmp/project path' && /custom/codex < {workspace}/codex_prompt.md"
+    assert command == f"cd '/tmp/project path' && /custom/codex exec -C '/tmp/project path' - < {workspace}/codex_prompt.md"
 
 
 def test_codex_prepare_artifacts_are_created(monkeypatch, tmp_path):
@@ -129,7 +138,7 @@ def test_codex_prepare_artifacts_are_created(monkeypatch, tmp_path):
 
     assert result.command_path == workspace / "run_codex_command.txt"
     assert result.script_path == workspace / "run_codex.sh"
-    assert result.command == f"cd /tmp/project && /custom/codex < {workspace}/codex_prompt.md"
+    assert result.command == f"cd /tmp/project && /custom/codex exec -C /tmp/project - < {workspace}/codex_prompt.md"
     assert result.command_path.read_text(encoding="utf-8") == f"{result.command}\n"
 
     script = result.script_path.read_text(encoding="utf-8")
@@ -539,7 +548,7 @@ def test_codex_run_clean_flow_creates_branch_invokes_codex_and_tests(monkeypatch
 
     def fake_command(command, local_path, timeout, stdin_path):
         command_calls.append((command, local_path, timeout, stdin_path))
-        if command == ["/custom/codex"]:
+        if command == ["/custom/codex", "exec", "-C", "/tmp/project", "-"]:
             return GitCommandResult(stdout="codex ok\n", stderr="", exit_code=0)
         if command == ["git", "diff"]:
             return GitCommandResult(stdout="diff --git a/app/main.py b/app/main.py\n", stderr="", exit_code=0)
@@ -556,7 +565,12 @@ def test_codex_run_clean_flow_creates_branch_invokes_codex_and_tests(monkeypatch
 
     assert status_calls == ["/tmp/project", "/tmp/project"]
     assert branch_calls == [("/tmp/project", "agent/TASK-0007-add-persistent-menu")]
-    assert command_calls[0] == (["/custom/codex"], "/tmp/project", 123, workspace / "codex_prompt.md")
+    assert command_calls[0] == (
+        ["/custom/codex", "exec", "-C", "/tmp/project", "-"],
+        "/tmp/project",
+        123,
+        workspace / "codex_prompt.md",
+    )
     assert ["git", "diff"] in [call[0] for call in command_calls]
     assert ["git", "diff", "--stat"] in [call[0] for call in command_calls]
     assert ["pytest", "-q"] in [call[0] for call in command_calls]
@@ -611,7 +625,7 @@ def test_codex_run_non_zero_exit_saves_logs_and_report(monkeypatch, tmp_path):
     task = make_task(workspace)
 
     def fake_command(command, local_path, timeout, stdin_path):
-        if command == ["/custom/codex"]:
+        if command == ["/custom/codex", "exec", "-C", "/tmp/project", "-"]:
             return GitCommandResult(stdout="", stderr="codex failed\n", exit_code=2)
         if command == ["git", "diff"]:
             return GitCommandResult(stdout="", stderr="", exit_code=0)

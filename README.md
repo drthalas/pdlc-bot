@@ -162,7 +162,7 @@ Supported runner modes:
   - if the working tree is dirty, save `git_status_before.txt` and stop;
   - if branch creation fails, save stdout/stderr/exit-code artifacts and stop;
   - if branch creation succeeds, also create `branch_name.txt`, `git_status_after_branch.txt`, `run_codex_command.txt`, and `run_codex.sh`.
-- `codex_run`: after a clean git check and branch creation, run Codex CLI with `codex_prompt.md` as stdin:
+- `codex_run`: after a clean git check and branch creation, run Codex CLI in non-interactive `exec` mode with `codex_prompt.md` as stdin:
   - saves Codex stdout/stderr/exit-code;
   - saves `git_status_after.txt`, `diff.patch`, `test_report.md`, and `developer_report.md`;
   - runs project test commands from `project.json`, falling back to `.venv/bin/pytest` and `.venv/bin/python -m app.main`;
@@ -195,7 +195,7 @@ It still does not execute Codex CLI, run `run_codex.sh`, commit, push, create PR
 ```bash
 git status --porcelain
 git checkout -b <branch>
-<codex_bin> < codex_prompt.md
+<codex_bin> exec -C <project_local_path> - < codex_prompt.md
 git diff
 git diff --stat
 <project test commands>

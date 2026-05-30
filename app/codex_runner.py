@@ -45,6 +45,10 @@ def get_codex_bin_path() -> str:
     return os.getenv("PDLC_CODEX_BIN", DEFAULT_CODEX_BIN).strip() or DEFAULT_CODEX_BIN
 
 
+def build_codex_exec_command_args(project_local_path: str) -> list[str]:
+    return [get_codex_bin_path(), "exec", "-C", project_local_path, "-"]
+
+
 def get_codex_timeout_seconds() -> int:
     raw_value = os.getenv("PDLC_CODEX_TIMEOUT_SECONDS", str(DEFAULT_CODEX_TIMEOUT_SECONDS)).strip()
     try:
@@ -184,9 +188,10 @@ def build_codex_prepare_command(task: TaskRecord, project_local_path: str | None
     workspace_path = Path(task.workspace_path).resolve()
     prompt_path = workspace_path / "codex_prompt.md"
     project_path = project_local_path or _load_project_local_path(task) or "."
+    codex_command = " ".join(shlex.quote(part) for part in build_codex_exec_command_args(project_path))
     return (
         f"cd {shlex.quote(project_path)} && "
-        f"{shlex.quote(get_codex_bin_path())} < {shlex.quote(str(prompt_path))}"
+        f"{codex_command} < {shlex.quote(str(prompt_path))}"
     )
 
 
@@ -642,7 +647,7 @@ def write_codex_run_artifacts(
 
     prompt_path = (workspace_path / "codex_prompt.md").resolve()
     codex_result = command_runner(
-        [get_codex_bin_path()],
+        build_codex_exec_command_args(project_local_path),
         project_local_path,
         get_codex_timeout_seconds(),
         prompt_path,
