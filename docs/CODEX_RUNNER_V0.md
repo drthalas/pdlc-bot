@@ -2,7 +2,7 @@
 
 Implementation status: started.
 
-Current stage: disabled-by-default UI skeleton plus prepare-command-only mode. The Telegram button exists, the disabled response is safe, and prepare mode can write manual-run artifacts. No actual Codex execution happens yet.
+Current stage: disabled-by-default UI skeleton plus prepare-command-only modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, and `branch_prepare` can write branch-preparation artifacts. No actual Codex execution happens yet.
 
 ## Goal
 
@@ -59,6 +59,12 @@ When the user clicks `Run Codex`:
   PDLC_CODEX_RUNNER_MODE=prepare
   ```
   It writes `run_codex_command.txt` and `run_codex.sh` into the task workspace for manual inspection and manual execution later.
+- Branch prepare mode is also non-executing:
+  ```text
+  PDLC_CODEX_RUNNER_MODE=branch_prepare
+  ```
+  It writes `git_status_before.txt`, `branch_name.txt`, `run_codex_command.txt`, and `run_codex.sh`. It does not create a branch, run `git checkout`, run Codex CLI, commit, push, or deploy.
+- In the current no-subprocess stage, `branch_prepare` does not execute `git status` yet. `git_status_before.txt` records that this check is intentionally deferred until the checked runner stage.
 - Never run Codex automatically when a task is created.
 - Run only after an explicit user click.
 - Do not commit.
@@ -151,9 +157,11 @@ Next buttons:
 
 1. Config flag + disabled button. Done.
 2. Runner skeleton without Codex execution: prepare command only. Started with `run_codex_command.txt` and `run_codex.sh`.
-3. Branch creation + git status checks.
-4. Actual Codex CLI execution.
-5. Logs/artifacts capture.
-6. Test runner.
-7. Telegram report.
-8. Fix loop.
+3. Branch preparation without branch creation. Started with `branch_name.txt` and `git_status_before.txt` placeholder.
+4. Checked git status collection without Codex execution.
+5. Branch creation + git status checks.
+6. Actual Codex CLI execution.
+7. Logs/artifacts capture.
+8. Test runner.
+9. Telegram report.
+10. Fix loop.

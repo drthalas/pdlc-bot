@@ -147,8 +147,15 @@ Supported runner modes:
 - `prepare`: create manual-run artifacts in the task workspace:
   - `run_codex_command.txt`
   - `run_codex.sh`
+- `branch_prepare`: create manual branch-preparation artifacts in the task workspace:
+  - `git_status_before.txt`
+  - `branch_name.txt`
+  - `run_codex_command.txt`
+  - `run_codex.sh`
 
-Prepare mode still does not execute Codex CLI, create branches, run subprocesses, commit, push, or deploy. It only writes the command text and script for a human to inspect and run manually.
+Prepare modes still do not execute Codex CLI, create branches, run subprocesses, commit, push, or deploy. They only write command text, scripts, and branch-preparation metadata for a human to inspect and run manually.
+
+`branch_prepare` currently does not execute `git status` from the bot because subprocess execution is intentionally disabled at this stage. It writes a placeholder `git_status_before.txt` with a TODO for the future checked runner.
 
 ## Mac mini operations
 
