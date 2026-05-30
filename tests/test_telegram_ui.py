@@ -1,12 +1,18 @@
 from app.project_registry import Project
 from app.task_store import TaskRecord
 from app.telegram_ui import (
+    MENU_BUTTON,
+    PROJECTS_BUTTON,
+    STATUS_BUTTON,
+    TASKS_BUTTON,
+    build_persistent_menu_keyboard,
     build_project_details_message,
     build_project_keyboard,
     build_recent_tasks_keyboard,
     build_recent_tasks_message,
     build_start_message,
     build_task_actions_keyboard,
+    get_menu_action,
 )
 
 
@@ -28,11 +34,34 @@ def button_text(markup) -> list[str]:
     return [button.text for row in markup.inline_keyboard for button in row]
 
 
+def keyboard_text(markup) -> list[str]:
+    return [button.text for row in markup.keyboard for button in row]
+
+
 def test_start_message_mentions_main_actions():
     message = build_start_message()
 
     assert "PDLC Bot is running." in message
     assert "Choose an action:" in message
+
+
+def test_persistent_menu_keyboard_contains_navigation_buttons():
+    markup = build_persistent_menu_keyboard()
+
+    texts = keyboard_text(markup)
+    assert MENU_BUTTON in texts
+    assert PROJECTS_BUTTON in texts
+    assert TASKS_BUTTON in texts
+    assert STATUS_BUTTON in texts
+    assert markup.resize_keyboard is True
+
+
+def test_get_menu_action_recognizes_menu_buttons():
+    assert get_menu_action(MENU_BUTTON) == "menu"
+    assert get_menu_action(PROJECTS_BUTTON) == "projects"
+    assert get_menu_action(TASKS_BUTTON) == "tasks"
+    assert get_menu_action(STATUS_BUTTON) == "status"
+    assert get_menu_action("В pdlc-bot добавь кнопку") is None
 
 
 def test_recent_tasks_message_with_tasks():

@@ -12,6 +12,7 @@ from app.task_messages import build_prompt_response, format_task_details_respons
 from app.task_workspace import list_artifacts
 from app.telegram_ui import (
     build_main_menu_keyboard,
+    build_persistent_menu_keyboard,
     build_project_details_message,
     build_project_keyboard,
     build_projects_message,
@@ -21,6 +22,7 @@ from app.telegram_ui import (
     build_status_message,
     build_task_actions_keyboard,
     build_task_details_keyboard,
+    get_menu_action,
 )
 
 
@@ -75,7 +77,8 @@ async def _guard(update: Update) -> bool:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
-    await update.message.reply_text(build_start_message(), reply_markup=build_main_menu_keyboard())
+    await update.message.reply_text(build_start_message(), reply_markup=build_persistent_menu_keyboard())
+    await update.message.reply_text("Choose an action:", reply_markup=build_main_menu_keyboard())
 
 
 async def projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -85,8 +88,11 @@ async def projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     registered = orchestrator.registry.list_projects()
     await update.message.reply_text(
         build_projects_message(registered),
-        reply_markup=build_project_keyboard(registered),
+        reply_markup=build_persistent_menu_keyboard(),
     )
+    keyboard = build_project_keyboard(registered)
+    if keyboard is not None:
+        await update.message.reply_text("Project actions:", reply_markup=keyboard)
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -96,8 +102,11 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     records = orchestrator.store.list_tasks(limit=10)
     await update.message.reply_text(
         build_status_message(records),
-        reply_markup=build_recent_tasks_keyboard(records),
+        reply_markup=build_persistent_menu_keyboard(),
     )
+    keyboard = build_recent_tasks_keyboard(records)
+    if keyboard is not None:
+        await update.message.reply_text("Task actions:", reply_markup=keyboard)
 
 
 async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -107,22 +116,25 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     records = orchestrator.store.list_tasks(limit=10)
     await update.message.reply_text(
         build_recent_tasks_message(records),
-        reply_markup=build_recent_tasks_keyboard(records),
+        reply_markup=build_persistent_menu_keyboard(),
     )
+    keyboard = build_recent_tasks_keyboard(records)
+    if keyboard is not None:
+        await update.message.reply_text("Task actions:", reply_markup=keyboard)
 
 
 async def task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     if not context.args:
-        await update.message.reply_text("Usage: /task TASK-0001")
+        await update.message.reply_text("Usage: /task TASK-0001", reply_markup=build_persistent_menu_keyboard())
         return
 
     task_id = context.args[0].strip()
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     record = orchestrator.store.get_task(task_id)
     if record is None:
-        await update.message.reply_text(f"Task {task_id} not found.")
+        await update.message.reply_text(f"Task {task_id} not found.", reply_markup=build_persistent_menu_keyboard())
         return
 
     await update.message.reply_text(
@@ -138,19 +150,33 @@ async def prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     if not context.args:
-        await update.message.reply_text("Usage: /prompt TASK-0001")
+        await update.message.reply_text("Usage: /prompt TASK-0001", reply_markup=build_persistent_menu_keyboard())
         return
 
     task_id = context.args[0].strip()
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     response = build_prompt_response(orchestrator.store, task_id)
-    await update.message.reply_text(response.message)
+    await update.message.reply_text(response.message, reply_markup=build_persistent_menu_keyboard())
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     if not update.message or not update.message.text:
+        return
+
+    menu_action = get_menu_action(update.message.text)
+    if menu_action == "menu":
+        await start(update, context)
+        return
+    if menu_action == "projects":
+        await projects(update, context)
+        return
+    if menu_action == "tasks":
+        await tasks(update, context)
+        return
+    if menu_action == "status":
+        await status(update, context)
         return
 
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]

@@ -1,9 +1,38 @@
 from __future__ import annotations
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from app.project_registry import Project
 from app.task_store import TaskRecord
+
+
+MENU_BUTTON = "🏠 Menu"
+PROJECTS_BUTTON = "📋 Projects"
+TASKS_BUTTON = "🗂 Tasks"
+STATUS_BUTTON = "ℹ️ Status"
+
+MENU_ACTIONS = {
+    MENU_BUTTON: "menu",
+    PROJECTS_BUTTON: "projects",
+    TASKS_BUTTON: "tasks",
+    STATUS_BUTTON: "status",
+}
+
+
+def get_menu_action(text: str) -> str | None:
+    return MENU_ACTIONS.get(text.strip())
+
+
+def build_persistent_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [MENU_BUTTON, PROJECTS_BUTTON],
+            [TASKS_BUTTON, STATUS_BUTTON],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Send a development task or use the menu",
+    )
 
 
 def build_start_message() -> str:

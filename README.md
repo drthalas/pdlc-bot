@@ -113,14 +113,21 @@ Useful endpoints:
 
 ## Telegram UX
 
-The bot uses inline buttons for common actions:
+The bot uses a persistent bottom menu for navigation:
+
+- `🏠 Menu`
+- `📋 Projects`
+- `🗂 Tasks`
+- `ℹ️ Status`
+
+The bottom menu is for navigation and remains available while using the bot. Inline buttons are still used for actions tied to a specific message or task.
 
 - `/start` opens the main menu.
 - `/projects` lists configured projects with project detail buttons.
 - `/tasks` shows recent tasks with task detail buttons.
 - New task responses include buttons for task details, Codex prompt, and recent tasks.
 
-The text commands `/task TASK-ID` and `/prompt TASK-ID` remain available for direct lookup.
+The slash commands `/start`, `/projects`, `/status`, `/tasks`, `/task TASK-ID`, and `/prompt TASK-ID` remain available for direct lookup.
 
 ## Mac mini operations
 
