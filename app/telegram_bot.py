@@ -19,6 +19,7 @@ from app.telegram_ui import (
     build_projects_message,
     build_recent_tasks_keyboard,
     build_recent_tasks_message,
+    build_runbook_message,
     build_start_message,
     build_status_message,
     build_task_actions_keyboard,
@@ -145,6 +146,12 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Task actions:", reply_markup=keyboard)
 
 
+async def runbook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    await update.message.reply_text(build_runbook_message(), reply_markup=build_persistent_menu_keyboard())
+
+
 async def task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
@@ -200,6 +207,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if menu_action == "status":
         await status(update, context)
         return
+    if menu_action == "runbook":
+        await runbook(update, context)
+        return
 
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     try:
@@ -252,6 +262,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             build_status_message(records),
             reply_markup=build_recent_tasks_keyboard(records),
         )
+        return
+
+    if data == "runbook:show":
+        await query.edit_message_text(build_runbook_message())
         return
 
     if data.startswith("project:show:"):
@@ -320,6 +334,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("projects", projects))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("tasks", tasks))
+    application.add_handler(CommandHandler("runbook", runbook))
     application.add_handler(CommandHandler("task", task))
     application.add_handler(CommandHandler("prompt", prompt))
     application.add_handler(CallbackQueryHandler(handle_callback))

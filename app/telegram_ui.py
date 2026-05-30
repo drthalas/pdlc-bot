@@ -10,12 +10,14 @@ MENU_BUTTON = "🏠 Menu"
 PROJECTS_BUTTON = "📋 Projects"
 TASKS_BUTTON = "🗂 Tasks"
 STATUS_BUTTON = "ℹ️ Status"
+RUNBOOK_BUTTON = "📘 Runbook"
 
 MENU_ACTIONS = {
     MENU_BUTTON: "menu",
     PROJECTS_BUTTON: "projects",
     TASKS_BUTTON: "tasks",
     STATUS_BUTTON: "status",
+    RUNBOOK_BUTTON: "runbook",
 }
 
 
@@ -50,8 +52,23 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("📋 Projects", callback_data="projects:show"),
                 InlineKeyboardButton("🗂 Recent tasks", callback_data="tasks:recent"),
             ],
-            [InlineKeyboardButton("ℹ️ Status", callback_data="status:show")],
+            [
+                InlineKeyboardButton("ℹ️ Status", callback_data="status:show"),
+                InlineKeyboardButton("📘 Runbook", callback_data="runbook:show"),
+            ],
         ]
+    )
+
+
+def build_runbook_message() -> str:
+    return (
+        "Mac mini runbook: `docs/MAC_MINI_RUNBOOK.md`\n\n"
+        "Use the runbook for operational tasks:\n"
+        "- service status\n"
+        "- logs\n"
+        "- restart\n"
+        "- deployed version check\n\n"
+        "For security, this Telegram summary does not include long shell commands, tokens, or secret details."
     )
 
 
