@@ -168,6 +168,14 @@ See [docs/MAC_MINI_RUNBOOK.md](docs/MAC_MINI_RUNBOOK.md) for service status, log
 - [PDLC roadmap](docs/ROADMAP.md)
 - [Codex Runner v0.1 specification](docs/CODEX_RUNNER_V0.md)
 
+## Project memory files
+
+Short memory files keep future Codex sessions focused:
+
+- [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
+- [TASKS.md](TASKS.md)
+- [DECISIONS.md](DECISIONS.md)
+
 ## Development Flow
 
 1. Send a task message to the Telegram bot.
