@@ -6,7 +6,7 @@ Version `0.1` creates local task artifacts and a Codex-ready prompt. It does not
 
 ## Features
 
-- Telegram commands: `/start`, `/projects`, `/status`, `/task <TASK-ID>`, `/prompt <TASK-ID>`
+- Telegram commands: `/start`, `/projects`, `/status`, `/tasks`, `/task <TASK-ID>`, `/prompt <TASK-ID>`
 - Telegram text messages become local development tasks
 - Optional Telegram user allowlist
 - YAML project registry with names and aliases
@@ -110,6 +110,17 @@ Useful endpoints:
 - `GET /health`
 - `GET /projects`
 - `GET /tasks`
+
+## Telegram UX
+
+The bot uses inline buttons for common actions:
+
+- `/start` opens the main menu.
+- `/projects` lists configured projects with project detail buttons.
+- `/tasks` shows recent tasks with task detail buttons.
+- New task responses include buttons for task details, Codex prompt, and recent tasks.
+
+The text commands `/task TASK-ID` and `/prompt TASK-ID` remain available for direct lookup.
 
 ## Mac mini operations
 

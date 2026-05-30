@@ -109,6 +109,9 @@ class TaskStore:
         return cursor.rowcount > 0
 
     def recent_tasks(self, limit: int = 10) -> list[TaskRecord]:
+        return self.list_tasks(limit=limit)
+
+    def list_tasks(self, limit: int = 10) -> list[TaskRecord]:
         with self._connect() as connection:
             rows = connection.execute(
                 """

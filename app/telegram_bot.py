@@ -5,11 +5,23 @@ import os
 
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.orchestrator import Orchestrator
 from app.task_messages import build_prompt_response, format_task_details_response
 from app.task_workspace import list_artifacts
+from app.telegram_ui import (
+    build_main_menu_keyboard,
+    build_project_details_message,
+    build_project_keyboard,
+    build_projects_message,
+    build_recent_tasks_keyboard,
+    build_recent_tasks_message,
+    build_start_message,
+    build_status_message,
+    build_task_actions_keyboard,
+    build_task_details_keyboard,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -63,9 +75,7 @@ async def _guard(update: Update) -> bool:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
-    await update.message.reply_text(
-        "PDLC bot is ready. Send a development task, or use /projects and /status."
-    )
+    await update.message.reply_text(build_start_message(), reply_markup=build_main_menu_keyboard())
 
 
 async def projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -73,31 +83,32 @@ async def projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     registered = orchestrator.registry.list_projects()
-    if not registered:
-        await update.message.reply_text("No projects configured. Create config/projects.yaml first.")
-        return
-
-    lines = ["Configured projects:"]
-    for project in registered:
-        alias_text = f" ({', '.join(project.aliases)})" if project.aliases else ""
-        lines.append(f"- {project.name}{alias_text}")
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text(
+        build_projects_message(registered),
+        reply_markup=build_project_keyboard(registered),
+    )
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
-    records = orchestrator.store.recent_tasks(limit=10)
-    if not records:
-        await update.message.reply_text("No tasks created yet.")
-        return
+    records = orchestrator.store.list_tasks(limit=10)
+    await update.message.reply_text(
+        build_status_message(records),
+        reply_markup=build_recent_tasks_keyboard(records),
+    )
 
-    lines = ["Recent tasks:"]
-    for record in records:
-        project_name = record.project_name or "unknown project"
-        lines.append(f"- {record.task_id}: {record.status}, {project_name}")
-    await update.message.reply_text("\n".join(lines))
+
+async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
+    records = orchestrator.store.list_tasks(limit=10)
+    await update.message.reply_text(
+        build_recent_tasks_message(records),
+        reply_markup=build_recent_tasks_keyboard(records),
+    )
 
 
 async def task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -118,7 +129,8 @@ async def task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         format_task_details_response(
             record,
             artifacts=list_artifacts(record.workspace_path),
-        )
+        ),
+        reply_markup=build_task_details_keyboard(record.task_id),
     )
 
 
@@ -149,7 +161,75 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Could not create the task. Check local logs for details.")
         return
 
-    await update.message.reply_text(result.response_text)
+    await update.message.reply_text(
+        result.response_text,
+        reply_markup=build_task_actions_keyboard(result.record.task_id),
+    )
+
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    query = update.callback_query
+    if query is None or query.data is None:
+        return
+
+    await query.answer()
+    orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
+    data = query.data
+
+    if data == "projects:show":
+        registered = orchestrator.registry.list_projects()
+        await query.edit_message_text(
+            build_projects_message(registered),
+            reply_markup=build_project_keyboard(registered),
+        )
+        return
+
+    if data == "tasks:recent":
+        records = orchestrator.store.list_tasks(limit=10)
+        await query.edit_message_text(
+            build_recent_tasks_message(records),
+            reply_markup=build_recent_tasks_keyboard(records),
+        )
+        return
+
+    if data == "status:show":
+        records = orchestrator.store.list_tasks(limit=10)
+        await query.edit_message_text(
+            build_status_message(records),
+            reply_markup=build_recent_tasks_keyboard(records),
+        )
+        return
+
+    if data.startswith("project:show:"):
+        project_name = data.removeprefix("project:show:")
+        project = orchestrator.registry.get(project_name)
+        if project is None:
+            await query.edit_message_text(f"Project {project_name} not found.")
+            return
+        await query.edit_message_text(build_project_details_message(project))
+        return
+
+    if data.startswith("task:details:"):
+        task_id = data.removeprefix("task:details:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        await query.edit_message_text(
+            format_task_details_response(record, artifacts=list_artifacts(record.workspace_path)),
+            reply_markup=build_task_details_keyboard(record.task_id),
+        )
+        return
+
+    if data.startswith("task:prompt:"):
+        task_id = data.removeprefix("task:prompt:")
+        response = build_prompt_response(orchestrator.store, task_id)
+        await query.edit_message_text(response.message)
+        return
+
+    await query.edit_message_text("Unknown action.")
 
 
 def build_application() -> Application:
@@ -164,8 +244,10 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("projects", projects))
     application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("tasks", tasks))
     application.add_handler(CommandHandler("task", task))
     application.add_handler(CommandHandler("prompt", prompt))
+    application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     return application
 
