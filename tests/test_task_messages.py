@@ -1,4 +1,4 @@
-from app.task_messages import build_prompt_response, format_task_created_response
+from app.task_messages import build_prompt_response, format_task_created_response, format_task_details_response, task_title
 from app.task_store import TaskRecord, TaskStore
 
 
@@ -38,6 +38,44 @@ def test_format_created_response_without_project(tmp_path):
     assert "Project: not detected" in message
     assert "Please mention a project name or alias from /projects next time." in message
     assert "Artifacts:" not in message
+
+
+def test_task_title_uses_first_input_line_and_strips_project_prefix(tmp_path):
+    record = make_record(tmp_path, project_name="pdlc-bot")
+    workspace = tmp_path / "TASK-0001"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("\nВ pdlc-bot улучши генерацию prompt и список задач\n", encoding="utf-8")
+
+    assert task_title(record) == "улучши генерацию prompt и список задач"
+
+
+def test_task_title_truncates_long_input(tmp_path):
+    record = make_record(tmp_path, project_name="pdlc-bot")
+    workspace = tmp_path / "TASK-0001"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("В pdlc-bot " + "очень " * 30, encoding="utf-8")
+
+    title = task_title(record, limit=40)
+
+    assert len(title) <= 40
+    assert title.endswith("…")
+
+
+def test_task_title_missing_input_falls_back_to_task_id(tmp_path):
+    record = make_record(tmp_path, project_name="pdlc-bot")
+
+    assert task_title(record) == "TASK-0001"
+
+
+def test_task_details_include_task_title(tmp_path):
+    record = make_record(tmp_path, project_name="pdlc-bot")
+    workspace = tmp_path / "TASK-0001"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("pdlc-bot: улучшить список задач\n", encoding="utf-8")
+
+    message = format_task_details_response(record, artifacts=["input.md"])
+
+    assert "Title: улучшить список задач" in message
 
 
 def test_build_prompt_response_returns_prompt(tmp_path):

@@ -10,6 +10,7 @@ from app.post_run_controls import (
 )
 from app.project_registry import Project
 from app.task_store import TaskRecord
+from app.task_messages import task_title
 
 
 MENU_BUTTON = "🏠 Menu"
@@ -201,7 +202,7 @@ def build_recent_tasks_message(tasks: list[TaskRecord]) -> str:
     lines = ["Recent tasks:", ""]
     for task in tasks:
         project_name = task.project_name or "not detected"
-        lines.append(f"{task.task_id} — {project_name} — {task.status}")
+        lines.append(f"{task.task_id} — {project_name} — {task_title(task)}")
     return "\n".join(lines)
 
 
@@ -209,7 +210,10 @@ def build_recent_tasks_keyboard(tasks: list[TaskRecord]) -> InlineKeyboardMarkup
     if not tasks:
         return None
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(task.task_id, callback_data=f"task:details:{task.task_id}")] for task in tasks]
+        [
+            [InlineKeyboardButton(f"{task.task_id} — {task_title(task, limit=48)}", callback_data=f"task:details:{task.task_id}")]
+            for task in tasks
+        ]
     )
 
 

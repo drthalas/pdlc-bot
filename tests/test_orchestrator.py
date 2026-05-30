@@ -69,3 +69,37 @@ def test_creates_artifacts(tmp_path):
     assert (task_path / "analysis.md").exists()
     assert (task_path / "implementation_plan.md").exists()
     assert (task_path / "codex_prompt.md").exists()
+
+
+def test_codex_prompt_contains_project_context_files_and_rules(tmp_path):
+    orchestrator = build_orchestrator(tmp_path)
+
+    result = orchestrator.create_task("В ai-sales-assistant улучши Telegram UX")
+    prompt = (tmp_path / "tasks" / result.record.task_id / "codex_prompt.md").read_text(encoding="utf-8")
+
+    for filename in (
+        "PROJECT_CONTEXT.md",
+        "TASKS.md",
+        "DECISIONS.md",
+        "README.md",
+        "docs/ROADMAP.md",
+        "docs/CODEX_RUNNER_V0.md",
+    ):
+        assert filename in prompt
+    assert "Relevant docs/*.md files for the task topic" in prompt
+    assert "User-facing Telegram text should be Russian by default." in prompt
+    assert "Technical artifact filenames, internal status values, and code identifiers may remain English." in prompt
+    assert "Codex Runner must not commit, push, or deploy without explicit approval." in prompt
+    assert "Mac mini is the execution runtime." in prompt
+    assert "Railway dashboard / PDLC Control Center is planned later." in prompt
+    assert "Tester/QA Agent is mandatory in the future roadmap." in prompt
+    assert "keep scope minimal and do not touch unrelated files" in prompt
+
+
+def test_codex_prompt_includes_mac_mini_runbook_for_deployment_tasks(tmp_path):
+    orchestrator = build_orchestrator(tmp_path)
+
+    result = orchestrator.create_task("В ai-sales-assistant обнови Mac mini deployment runbook")
+    prompt = (tmp_path / "tasks" / result.record.task_id / "codex_prompt.md").read_text(encoding="utf-8")
+
+    assert "docs/MAC_MINI_RUNBOOK.md" in prompt

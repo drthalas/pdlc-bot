@@ -46,6 +46,19 @@ def make_task(task_id: str, project_name: str | None = "pdlc-bot") -> TaskRecord
     )
 
 
+def make_task_with_input(tmp_path: Path, task_id: str, text: str, project_name: str | None = "pdlc-bot") -> TaskRecord:
+    workspace = tmp_path / task_id
+    workspace.mkdir()
+    (workspace / "input.md").write_text(text, encoding="utf-8")
+    return TaskRecord(
+        task_id=task_id,
+        project_name=project_name,
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+
+
 def button_data(markup) -> list[str]:
     return [button.callback_data for row in markup.inline_keyboard for button in row]
 
@@ -254,16 +267,33 @@ def test_handle_callback_confirm_commit_shows_push_button_after_mocked_commit(mo
     assert "📤 Push branch" in button_text(update.callback_query.edits[-1]["reply_markup"])
 
 
-def test_recent_tasks_message_with_tasks():
-    message = build_recent_tasks_message([make_task("TASK-0002"), make_task("TASK-0001")])
+def test_recent_tasks_message_with_tasks(tmp_path):
+    first = make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot улучши генерацию prompt и список задач")
+    second = make_task_with_input(tmp_path, "TASK-0001", "pdlc-bot добавить кнопки")
+
+    message = build_recent_tasks_message([first, second])
 
     assert "Recent tasks:" in message
-    assert "TASK-0002 — pdlc-bot — prompt_ready" in message
-    assert "TASK-0001 — pdlc-bot — prompt_ready" in message
+    assert "TASK-0002 — pdlc-bot — улучши генерацию prompt и список задач" in message
+    assert "TASK-0001 — pdlc-bot — добавить кнопки" in message
 
 
 def test_recent_tasks_message_without_tasks():
     assert build_recent_tasks_message([]) == "No tasks created yet."
+
+
+def test_recent_tasks_message_missing_input_falls_back_to_task_id():
+    message = build_recent_tasks_message([make_task("TASK-0002")])
+
+    assert "TASK-0002 — pdlc-bot — TASK-0002" in message
+
+
+def test_recent_tasks_message_truncates_long_title(tmp_path):
+    record = make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot " + "очень " * 30)
+
+    message = build_recent_tasks_message([record])
+
+    assert "…" in message
 
 
 def test_callback_data_is_compact_and_contains_expected_ids():
@@ -453,10 +483,12 @@ def test_confirm_keyboards_separate_commit_push_and_discard():
     ]
 
 
-def test_recent_tasks_keyboard_contains_task_buttons():
-    markup = build_recent_tasks_keyboard([make_task("TASK-0002"), make_task("TASK-0001")])
+def test_recent_tasks_keyboard_contains_task_buttons(tmp_path):
+    first = make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot улучшить список задач")
+    second = make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot добавить кнопки")
+    markup = build_recent_tasks_keyboard([first, second])
 
-    assert button_text(markup) == ["TASK-0002", "TASK-0001"]
+    assert button_text(markup) == ["TASK-0002 — улучшить список задач", "TASK-0001 — добавить кнопки"]
     assert button_data(markup) == ["task:details:TASK-0002", "task:details:TASK-0001"]
 
 

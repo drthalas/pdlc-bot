@@ -2,17 +2,48 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 
 from app.task_store import TaskRecord, TaskStore
 
 
 PROMPT_PREVIEW_LIMIT = 3500
+TASK_TITLE_LIMIT = 72
 
 
 @dataclass(frozen=True)
 class PromptResponse:
     message: str
     found: bool
+
+
+def _strip_task_prefix(title: str, project_name: str | None) -> str:
+    cleaned = " ".join(title.strip().split())
+    if project_name:
+        escaped_project = re.escape(project_name)
+        cleaned = re.sub(rf"^(?:в|для)\s+{escaped_project}\s+", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(rf"^{escaped_project}\s*[:—-]?\s*", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip(" :—-") or title.strip()
+
+
+def _truncate_title(title: str, limit: int = TASK_TITLE_LIMIT) -> str:
+    if len(title) <= limit:
+        return title
+    return f"{title[: limit - 1].rstrip()}…"
+
+
+def task_title(record: TaskRecord, limit: int = TASK_TITLE_LIMIT) -> str:
+    input_path = Path(record.workspace_path) / "input.md"
+    try:
+        lines = input_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return record.task_id
+
+    for line in lines:
+        normalized = " ".join(line.strip().split())
+        if normalized:
+            return _truncate_title(_strip_task_prefix(normalized, record.project_name), limit=limit)
+    return record.task_id
 
 
 def format_task_created_response(
@@ -57,6 +88,7 @@ def format_task_details_response(record: TaskRecord, artifacts: list[str]) -> st
     lines = [
         record.task_id,
         "",
+        f"Title: {task_title(record)}",
         f"Project: {project_name}",
         f"Status: {record.status}",
         f"Workspace: {record.workspace_path}",
