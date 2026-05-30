@@ -1,5 +1,9 @@
 # Codex Runner v0.1
 
+Implementation status: started.
+
+Current stage: disabled-by-default UI skeleton. The Telegram button and safe disabled response exist, but no actual Codex execution happens yet.
+
 ## Goal
 
 Today, the user copies `codex_prompt.md` into Codex manually and then brings the result back into the workflow.

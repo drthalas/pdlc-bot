@@ -4,7 +4,7 @@ Local Telegram-based PDLC orchestration bot for creating development task worksp
 
 Version `0.1` creates local task artifacts and a Codex-ready prompt. It does not run the Codex CLI, create branches, commit code, push to Git, call GitHub, or create pull requests.
 
-The bot currently runs in prompt/artifact mode. Codex Runner is not enabled yet; the future runner is specified in [docs/CODEX_RUNNER_V0.md](docs/CODEX_RUNNER_V0.md). See [docs/ROADMAP.md](docs/ROADMAP.md) for the broader PDLC roadmap.
+The bot currently runs in prompt/artifact mode. Codex Runner is disabled by default; the future runner is specified in [docs/CODEX_RUNNER_V0.md](docs/CODEX_RUNNER_V0.md). See [docs/ROADMAP.md](docs/ROADMAP.md) for the broader PDLC roadmap.
 
 ## Features
 
@@ -130,6 +130,8 @@ The bottom menu is for navigation and remains available while using the bot. Inl
 - New task responses include buttons for task details, Codex prompt, and recent tasks.
 
 The slash commands `/start`, `/projects`, `/status`, `/tasks`, `/task TASK-ID`, and `/prompt TASK-ID` remain available for direct lookup.
+
+Task messages include a `▶️ Run Codex` button, but Codex Runner is disabled by default. This version does not run Codex CLI. Future runner configuration will use `PDLC_ENABLE_CODEX_RUNNER`, `PDLC_CODEX_RUNNER_MODE`, and `PDLC_CODEX_BIN`.
 
 ## Mac mini operations
 

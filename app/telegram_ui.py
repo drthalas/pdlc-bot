@@ -58,6 +58,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
 def build_task_actions_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
+            [InlineKeyboardButton("▶️ Run Codex", callback_data=f"task:run_codex:{task_id}")],
             [
                 InlineKeyboardButton("📄 Task details", callback_data=f"task:details:{task_id}"),
                 InlineKeyboardButton("🧠 Codex prompt", callback_data=f"task:prompt:{task_id}"),
@@ -70,6 +71,7 @@ def build_task_actions_keyboard(task_id: str) -> InlineKeyboardMarkup:
 def build_task_details_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
+            [InlineKeyboardButton("▶️ Run Codex", callback_data=f"task:run_codex:{task_id}")],
             [InlineKeyboardButton("🧠 Codex prompt", callback_data=f"task:prompt:{task_id}")],
             [InlineKeyboardButton("🗂 Recent tasks", callback_data="tasks:recent")],
         ]

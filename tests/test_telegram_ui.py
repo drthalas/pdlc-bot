@@ -80,6 +80,7 @@ def test_callback_data_is_compact_and_contains_expected_ids():
     markup = build_task_actions_keyboard("TASK-0002")
 
     data = button_data(markup)
+    assert "task:run_codex:TASK-0002" in data
     assert "task:details:TASK-0002" in data
     assert "task:prompt:TASK-0002" in data
     assert "tasks:recent" in data
@@ -90,6 +91,7 @@ def test_task_actions_keyboard_contains_expected_buttons():
     markup = build_task_actions_keyboard("TASK-0002")
 
     texts = button_text(markup)
+    assert "▶️ Run Codex" in texts
     assert "📄 Task details" in texts
     assert "🧠 Codex prompt" in texts
     assert "🗂 Recent tasks" in texts

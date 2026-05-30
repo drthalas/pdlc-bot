@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
+from app.codex_runner import build_codex_runner_response
 from app.orchestrator import Orchestrator
 from app.task_messages import build_prompt_response, format_task_details_response
 from app.task_workspace import list_artifacts
@@ -253,6 +254,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:prompt:")
         response = build_prompt_response(orchestrator.store, task_id)
         await query.edit_message_text(response.message)
+        return
+
+    if data.startswith("task:run_codex:"):
+        task_id = data.removeprefix("task:run_codex:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        await query.edit_message_text(
+            build_codex_runner_response(record),
+            reply_markup=build_task_details_keyboard(record.task_id),
+        )
         return
 
     await query.edit_message_text("Unknown action.")
