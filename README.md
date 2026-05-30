@@ -67,6 +67,8 @@ Create `config/projects.yaml` from the example:
 cp config/projects.example.yaml config/projects.yaml
 ```
 
+`config/projects.yaml` is a local runtime config and is ignored by Git. Do not commit machine-specific project paths or private project metadata.
+
 Example project entry:
 
 ```yaml
