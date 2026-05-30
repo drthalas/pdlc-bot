@@ -29,6 +29,8 @@ from app.telegram_ui import (
 
 logger = logging.getLogger(__name__)
 NOISY_LOGGERS = ("httpx", "httpcore", "telegram", "telegram.ext", "apscheduler")
+RUNNING_CODEX_STATUSES = frozenset({"coding", "codex_running", "testing"})
+CODEX_CALLBACK_ACK = "Running Codex..."
 
 
 def configure_safe_logging() -> None:
@@ -55,6 +57,25 @@ def is_user_allowed(user_id: int | None, allowed_user_ids: set[int]) -> bool:
     if not allowed_user_ids:
         return True
     return user_id is not None and user_id in allowed_user_ids
+
+
+def is_task_running_status(status: str) -> bool:
+    return status in RUNNING_CODEX_STATUSES
+
+
+def build_codex_runner_started_message(task_id: str) -> str:
+    return f"⏳ Codex Runner started for {task_id}. This may take a while."
+
+
+def final_codex_status_from_response(response: str) -> str:
+    failure_markers = (
+        "Working tree is dirty",
+        "cannot continue",
+        "Codex failed",
+        "Tests: failed",
+        "Branch was not created",
+    )
+    return "failed" if any(marker in response for marker in failure_markers) else "prompt_ready"
 
 
 def _allowed_user_ids() -> set[int]:
@@ -201,9 +222,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if query is None or query.data is None:
         return
 
-    await query.answer()
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     data = query.data
+
+    if data.startswith("task:run_codex:"):
+        await query.answer(CODEX_CALLBACK_ACK)
+    else:
+        await query.answer()
 
     if data == "projects:show":
         registered = orchestrator.registry.list_projects()
@@ -262,8 +287,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if record is None:
             await query.edit_message_text(f"Task {task_id} not found.")
             return
+        if is_task_running_status(record.status):
+            await query.edit_message_text(
+                f"Task {task_id} is already running.",
+                reply_markup=build_task_details_keyboard(record.task_id),
+            )
+            return
+        orchestrator.store.update_status(task_id, "codex_running")
+        await query.edit_message_text(build_codex_runner_started_message(task_id))
+        record = orchestrator.store.get_task(task_id) or record
+        response = build_codex_runner_response(record)
+        orchestrator.store.update_status(task_id, final_codex_status_from_response(response))
         await query.edit_message_text(
-            build_codex_runner_response(record),
+            response,
             reply_markup=build_task_details_keyboard(record.task_id),
         )
         return

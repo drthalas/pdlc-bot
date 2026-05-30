@@ -18,6 +18,7 @@ from app.codex_runner import (
     is_git_status_clean,
     is_codex_runner_enabled,
     read_git_status_porcelain,
+    summarize_dirty_status,
     write_codex_branch_prepare_artifacts,
     write_codex_branch_create_artifacts,
     write_codex_git_check_artifacts,
@@ -191,6 +192,12 @@ def test_git_status_clean_helper_covers_dirty_tree():
     assert is_git_status_clean(" M app/main.py\n?? scratch.txt") is False
 
 
+def test_summarize_dirty_status_keeps_dirty_files_visible():
+    status = " M README.md\n?? scratch.txt\n"
+
+    assert summarize_dirty_status(status) == " M README.md\n?? scratch.txt"
+
+
 def test_codex_branch_prepare_artifacts_are_created(monkeypatch, tmp_path):
     monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
     workspace = tmp_path / "TASK-0007"
@@ -308,6 +315,7 @@ def test_codex_git_check_dirty_status_stops_flow(tmp_path):
 
     message = build_codex_git_check_message(task, result)
     assert "Working tree is dirty" in message
+    assert " M app/main.py" in message
     assert "No branch was created" in message
     assert "No command was executed" in message
 
@@ -446,6 +454,7 @@ def test_codex_branch_create_dirty_flow_does_not_create_branch(tmp_path):
 
     message = build_codex_branch_create_message(task, result)
     assert "Working tree is dirty" in message
+    assert " M app/main.py" in message
     assert "No branch was created" in message
 
 
@@ -613,6 +622,9 @@ def test_codex_run_dirty_flow_stops_before_branch_or_codex(tmp_path):
     assert branch_calls == []
     assert command_calls == []
     assert result.git_status_before_path.read_text(encoding="utf-8") == " M app/main.py\n"
+    message = build_codex_run_message(task, result)
+    assert "Working tree is dirty" in message
+    assert " M app/main.py" in message
 
 
 def test_codex_run_non_zero_exit_saves_logs_and_report(monkeypatch, tmp_path):

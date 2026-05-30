@@ -267,6 +267,17 @@ def is_git_status_clean(status_text: str) -> bool:
     return "nothing to commit, working tree clean" in lowered
 
 
+def summarize_dirty_status(status_text: str, limit: int = 8) -> str:
+    lines = [line for line in status_text.splitlines() if line.strip()]
+    if not lines:
+        return "No dirty files were reported."
+
+    visible = lines[:limit]
+    if len(lines) > limit:
+        visible.append(f"... and {len(lines) - limit} more")
+    return "\n".join(visible)
+
+
 def read_git_status_porcelain(project_local_path: str, timeout: int = GIT_STATUS_TIMEOUT_SECONDS) -> str:
     try:
         result = subprocess.run(
@@ -767,6 +778,8 @@ def build_codex_git_check_message(task: TaskRecord, result: CodexGitCheckResult)
             "No branch was created.\n"
             "No command was executed.\n\n"
             f"Task: {task.task_id}\n\n"
+            "Dirty status:\n"
+            f"{summarize_dirty_status(result.git_status)}\n\n"
             "Artifacts:\n"
             f"- {result.git_status_path}"
         )
@@ -794,6 +807,8 @@ def build_codex_branch_create_message(task: TaskRecord, result: CodexBranchCreat
             "No Codex command was executed.\n"
             "No commit/push was performed.\n\n"
             f"Task: {task.task_id}\n\n"
+            "Dirty status:\n"
+            f"{summarize_dirty_status(result.git_status_before)}\n\n"
             "Artifacts:\n"
             f"- {result.git_status_before_path}"
         )
@@ -841,6 +856,8 @@ def build_codex_run_message(task: TaskRecord, result: CodexRunResult) -> str:
             "No Codex command was executed.\n"
             "No commit/push/deploy was performed.\n\n"
             f"Task: {task.task_id}\n\n"
+            "Dirty status:\n"
+            f"{summarize_dirty_status(result.git_status_before_path.read_text(encoding='utf-8'))}\n\n"
             "Artifacts:\n"
             f"- {result.git_status_before_path}"
         )

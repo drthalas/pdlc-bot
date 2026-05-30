@@ -12,6 +12,9 @@ VALID_TASK_STATUSES = frozenset(
         "analyzed",
         "planned",
         "prompt_ready",
+        "codex_running",
+        "coding",
+        "testing",
         "failed",
         "cancelled",
     }
