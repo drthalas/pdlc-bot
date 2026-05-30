@@ -111,6 +111,12 @@ Useful endpoints:
 - `GET /projects`
 - `GET /tasks`
 
+## Mac mini operations
+
+Persistent deployment uses a user-level `launchd` service on the Mac mini under user `hermes`. The bot currently runs in Telegram MVP mode: task creation, local artifacts, `/task`, and `/prompt`.
+
+See [docs/MAC_MINI_RUNBOOK.md](docs/MAC_MINI_RUNBOOK.md) for service status, logs, restart, update, and security procedures.
+
 ## Development Flow
 
 1. Send a task message to the Telegram bot.
