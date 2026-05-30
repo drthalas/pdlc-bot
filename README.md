@@ -49,6 +49,14 @@ TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
 
 If `TELEGRAM_ALLOWED_USER_IDS` is empty, any Telegram user who can reach the bot is allowed. Do not leave it empty when running the bot with a real Telegram token.
 
+## Safe Live Run
+
+Never publish `TELEGRAM_BOT_TOKEN` or paste it into logs, screenshots, chats, or GitHub. Set `TELEGRAM_ALLOWED_USER_IDS` before starting the bot with a real token.
+
+If a Telegram token is accidentally exposed, rotate it through BotFather and update only the local `.env` on the machine that runs the bot.
+
+The Telegram runtime configures noisy HTTP and Telegram library loggers at `WARNING` level so polling logs do not print sensitive Telegram API URLs.
+
 ## Configure Projects
 
 Create `config/projects.yaml` from the example:

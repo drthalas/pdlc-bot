@@ -13,6 +13,14 @@ from app.task_workspace import list_artifacts
 
 
 logger = logging.getLogger(__name__)
+NOISY_LOGGERS = ("httpx", "httpcore", "telegram", "telegram.ext", "apscheduler")
+
+
+def configure_safe_logging() -> None:
+    logging.basicConfig(level=logging.INFO)
+    logging.getLogger("app").setLevel(logging.INFO)
+    for logger_name in NOISY_LOGGERS:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
 def parse_allowed_user_ids(raw_value: str) -> set[int]:
@@ -145,12 +153,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 def build_application() -> Application:
+    configure_safe_logging()
     load_dotenv()
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
 
-    logging.basicConfig(level=logging.INFO)
     application = Application.builder().token(token).build()
     application.bot_data["orchestrator"] = Orchestrator()
     application.add_handler(CommandHandler("start", start))
