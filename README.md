@@ -203,12 +203,14 @@ git diff --stat
 
 It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
 
+Task UI is state-aware after a Codex run. If `codex_exit_code.txt` is `0`, `diff.patch` is non-empty, and `test_report.md` passed, `/task`, `/prompt`, task details, and diff views show post-run controls instead of offering another Codex run.
+
 After a successful `codex_run` with a non-empty `diff.patch` and passing tests, Telegram shows post-run controls:
 
-- `🔍 Show diff`: displays `diff.patch` from the task artifacts, truncated for Telegram when needed.
-- `🧪 Run tests again`: currently returns `not implemented yet`.
-- `✅ Commit changes`: asks for confirmation before running a local commit.
-- `🧹 Discard changes`: asks for confirmation before discarding the branch changes.
+- `🔍 Показать diff`: displays `diff.patch` from the task artifacts, truncated for Telegram when needed.
+- `🧪 Запустить тесты ещё раз`: currently returns `Повторный запуск тестов пока не реализован.`
+- `✅ Закоммитить изменения`: asks for confirmation before running a local commit.
+- `🧹 Откатить изменения`: asks for confirmation before discarding the branch changes.
 
 Commit, push, and discard are intentionally separate steps. Confirm commit only runs on the current `agent/TASK-*` branch matching the task artifact, stages only allowed changed files explicitly, then creates a local commit with message `TASK-XXXX: <short task title>`. It does not push. After a successful commit, Telegram shows a separate `📤 Push branch` button. Push is disabled by default with `PDLC_ENABLE_GIT_PUSH=false`. When enabled with `PDLC_ENABLE_GIT_PUSH=true`, push still requires confirmation and runs only `git push -u origin <branch>`. Discard also requires confirmation and runs `git reset --hard` followed by `git checkout main`, only from the matching `agent/TASK-*` branch.
 

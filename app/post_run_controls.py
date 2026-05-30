@@ -13,6 +13,10 @@ from app.task_store import TaskRecord
 
 GIT_ACTION_TIMEOUT_SECONDS = 30
 SAFE_AGENT_BRANCH_RE = re.compile(r"^agent/TASK-\d{4}(?:-.+)?$")
+TASK_RESULT_READY_FOR_POST_RUN_ACTIONS = "ready_for_post_run_actions"
+TASK_RESULT_COMMITTED = "committed"
+TASK_RESULT_RUNNING = "running"
+TASK_RESULT_PROMPT_READY = "prompt_ready"
 SECRET_NAME_RE = re.compile(r"(?:^|[-_.])(secret|token|key)(?:[-_.]|$)", re.IGNORECASE)
 EXPLICITLY_ALLOWED_SECRET_PATHS = {
     "tests/test_post_run_controls.py",
@@ -74,6 +78,16 @@ def _tests_passed(task: TaskRecord) -> bool:
 
 def should_show_post_run_controls(task: TaskRecord) -> bool:
     return _codex_exit_code_is_zero(task) and _diff_exists(task) and _tests_passed(task)
+
+
+def task_result_state(task: TaskRecord) -> str:
+    if task.status == "committed":
+        return TASK_RESULT_COMMITTED
+    if task.status in {"coding", "codex_running", "testing"}:
+        return TASK_RESULT_RUNNING
+    if should_show_post_run_controls(task):
+        return TASK_RESULT_READY_FOR_POST_RUN_ACTIONS
+    return TASK_RESULT_PROMPT_READY
 
 
 def is_git_push_enabled() -> bool:

@@ -15,7 +15,6 @@ from app.post_run_controls import (
     commit_task_changes,
     discard_task_changes,
     push_task_branch,
-    should_show_post_run_controls,
 )
 from app.task_messages import build_prompt_response, format_task_details_response
 from app.task_workspace import list_artifacts
@@ -27,7 +26,6 @@ from app.telegram_ui import (
     build_persistent_menu_keyboard,
     build_project_details_message,
     build_project_keyboard,
-    build_push_branch_keyboard,
     build_push_confirm_keyboard,
     build_projects_message,
     build_recent_tasks_keyboard,
@@ -35,8 +33,7 @@ from app.telegram_ui import (
     build_runbook_message,
     build_start_message,
     build_status_message,
-    build_task_actions_keyboard,
-    build_task_details_keyboard,
+    build_task_action_keyboard,
     get_menu_action,
 )
 
@@ -184,7 +181,7 @@ async def task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             record,
             artifacts=list_artifacts(record.workspace_path),
         ),
-        reply_markup=build_task_details_keyboard(record.task_id),
+        reply_markup=build_task_action_keyboard(record),
     )
 
 
@@ -197,8 +194,10 @@ async def prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     task_id = context.args[0].strip()
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
+    record = orchestrator.store.get_task(task_id)
     response = build_prompt_response(orchestrator.store, task_id)
-    await update.message.reply_text(response.message, reply_markup=build_persistent_menu_keyboard())
+    reply_markup = build_task_action_keyboard(record) if record is not None else build_persistent_menu_keyboard()
+    await update.message.reply_text(response.message, reply_markup=reply_markup)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -234,7 +233,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     await update.message.reply_text(
         result.response_text,
-        reply_markup=build_task_actions_keyboard(result.record.task_id),
+        reply_markup=build_task_action_keyboard(result.record),
     )
 
 
@@ -298,14 +297,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
         await query.edit_message_text(
             format_task_details_response(record, artifacts=list_artifacts(record.workspace_path)),
-            reply_markup=build_task_details_keyboard(record.task_id),
+            reply_markup=build_task_action_keyboard(record),
         )
         return
 
     if data.startswith("task:prompt:"):
         task_id = data.removeprefix("task:prompt:")
+        record = orchestrator.store.get_task(task_id)
         response = build_prompt_response(orchestrator.store, task_id)
-        await query.edit_message_text(response.message)
+        reply_markup = build_task_action_keyboard(record) if record is not None else None
+        await query.edit_message_text(response.message, reply_markup=reply_markup)
         return
 
     if data.startswith("task:run_codex:"):
@@ -317,7 +318,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if is_task_running_status(record.status):
             await query.edit_message_text(
                 f"Task {task_id} is already running.",
-                reply_markup=build_task_details_keyboard(record.task_id),
+                reply_markup=build_task_action_keyboard(record),
             )
             return
         orchestrator.store.update_status(task_id, "codex_running")
@@ -325,12 +326,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         record = orchestrator.store.get_task(task_id) or record
         response = build_codex_runner_response(record)
         orchestrator.store.update_status(task_id, final_codex_status_from_response(response))
-        is_successful_codex_run = "Codex Runner codex_run mode." in response and "Codex finished." in response
-        reply_markup = (
-            build_codex_post_run_keyboard(record.task_id)
-            if is_successful_codex_run and should_show_post_run_controls(record)
-            else build_task_details_keyboard(record.task_id)
-        )
+        record = orchestrator.store.get_task(task_id) or record
+        reply_markup = build_task_action_keyboard(record)
         await query.edit_message_text(
             response,
             reply_markup=reply_markup,
@@ -352,7 +349,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if data.startswith("task:tests_again:"):
         task_id = data.removeprefix("task:tests_again:")
         await query.edit_message_text(
-            "Run tests again is not implemented yet.",
+            "Повторный запуск тестов пока не реализован.",
             reply_markup=build_codex_post_run_keyboard(task_id),
         )
         return
@@ -376,9 +373,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.edit_message_text(f"Task {task_id} not found.")
             return
         result = commit_task_changes(record)
+        if result.ok:
+            orchestrator.store.update_status(task_id, "committed")
+            record = orchestrator.store.get_task(task_id) or record
         await query.edit_message_text(
             result.message,
-            reply_markup=build_push_branch_keyboard(task_id) if result.ok else build_task_details_keyboard(task_id),
+            reply_markup=build_task_action_keyboard(record),
         )
         return
 
@@ -401,7 +401,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.edit_message_text(f"Task {task_id} not found.")
             return
         result = push_task_branch(record)
-        await query.edit_message_text(result.message, reply_markup=build_task_details_keyboard(task_id))
+        await query.edit_message_text(result.message, reply_markup=build_task_action_keyboard(record))
         return
 
     if data.startswith("task:discard:"):
@@ -423,7 +423,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.edit_message_text(f"Task {task_id} not found.")
             return
         result = discard_task_changes(record)
-        await query.edit_message_text(result.message, reply_markup=build_task_details_keyboard(task_id))
+        await query.edit_message_text(result.message, reply_markup=build_task_action_keyboard(record))
         return
 
     await query.edit_message_text("Unknown action.")

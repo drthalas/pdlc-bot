@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
+from app.post_run_controls import (
+    TASK_RESULT_COMMITTED,
+    TASK_RESULT_READY_FOR_POST_RUN_ACTIONS,
+    TASK_RESULT_RUNNING,
+    task_result_state,
+)
 from app.project_registry import Project
 from app.task_store import TaskRecord
 
@@ -72,25 +78,29 @@ def build_runbook_message() -> str:
     )
 
 
-def build_task_actions_keyboard(task_id: str) -> InlineKeyboardMarkup:
+def build_prompt_ready_task_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("▶️ Run Codex", callback_data=f"task:run_codex:{task_id}")],
+            [InlineKeyboardButton("▶️ Запустить Codex", callback_data=f"task:run_codex:{task_id}")],
             [
-                InlineKeyboardButton("📄 Task details", callback_data=f"task:details:{task_id}"),
+                InlineKeyboardButton("📄 Детали задачи", callback_data=f"task:details:{task_id}"),
                 InlineKeyboardButton("🧠 Codex prompt", callback_data=f"task:prompt:{task_id}"),
             ],
-            [InlineKeyboardButton("🗂 Recent tasks", callback_data="tasks:recent")],
+            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
         ]
     )
+
+
+def build_task_actions_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return build_prompt_ready_task_keyboard(task_id)
 
 
 def build_task_details_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("▶️ Run Codex", callback_data=f"task:run_codex:{task_id}")],
+            [InlineKeyboardButton("▶️ Запустить Codex", callback_data=f"task:run_codex:{task_id}")],
             [InlineKeyboardButton("🧠 Codex prompt", callback_data=f"task:prompt:{task_id}")],
-            [InlineKeyboardButton("🗂 Recent tasks", callback_data="tasks:recent")],
+            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
         ]
     )
 
@@ -99,16 +109,45 @@ def build_codex_post_run_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🔍 Show diff", callback_data=f"task:show_diff:{task_id}"),
-                InlineKeyboardButton("🧪 Run tests again", callback_data=f"task:tests_again:{task_id}"),
+                InlineKeyboardButton("🔍 Показать diff", callback_data=f"task:show_diff:{task_id}"),
+                InlineKeyboardButton("🧪 Запустить тесты ещё раз", callback_data=f"task:tests_again:{task_id}"),
             ],
             [
-                InlineKeyboardButton("✅ Commit changes", callback_data=f"task:commit:{task_id}"),
-                InlineKeyboardButton("🧹 Discard changes", callback_data=f"task:discard:{task_id}"),
+                InlineKeyboardButton("✅ Закоммитить изменения", callback_data=f"task:commit:{task_id}"),
+                InlineKeyboardButton("🧹 Откатить изменения", callback_data=f"task:discard:{task_id}"),
             ],
-            [InlineKeyboardButton("📄 Task details", callback_data=f"task:details:{task_id}")],
+            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
         ]
     )
+
+
+def build_committed_task_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("📤 Push branch", callback_data=f"task:push:{task_id}")],
+            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
+        ]
+    )
+
+
+def build_running_task_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("⏳ Running", callback_data=f"task:details:{task_id}")],
+            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
+        ]
+    )
+
+
+def build_task_action_keyboard(task: TaskRecord) -> InlineKeyboardMarkup:
+    state = task_result_state(task)
+    if state == TASK_RESULT_READY_FOR_POST_RUN_ACTIONS:
+        return build_codex_post_run_keyboard(task.task_id)
+    if state == TASK_RESULT_COMMITTED:
+        return build_committed_task_keyboard(task.task_id)
+    if state == TASK_RESULT_RUNNING:
+        return build_running_task_keyboard(task.task_id)
+    return build_prompt_ready_task_keyboard(task.task_id)
 
 
 def build_commit_confirm_keyboard(task_id: str) -> InlineKeyboardMarkup:

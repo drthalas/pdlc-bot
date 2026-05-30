@@ -15,6 +15,7 @@ VALID_TASK_STATUSES = frozenset(
         "codex_running",
         "coding",
         "testing",
+        "committed",
         "failed",
         "cancelled",
     }

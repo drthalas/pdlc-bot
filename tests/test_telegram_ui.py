@@ -3,9 +3,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.project_registry import Project
-from app.post_run_controls import PostRunActionResult
+from app.post_run_controls import (
+    TASK_RESULT_COMMITTED,
+    TASK_RESULT_READY_FOR_POST_RUN_ACTIONS,
+    PostRunActionResult,
+    task_result_state,
+)
 from app.task_store import TaskRecord
-from app.telegram_bot import handle_callback, handle_text
+from app.telegram_bot import handle_callback, handle_text, prompt, task
 from app.telegram_ui import (
     MENU_BUTTON,
     PROJECTS_BUTTON,
@@ -25,6 +30,7 @@ from app.telegram_ui import (
     build_recent_tasks_message,
     build_runbook_message,
     build_start_message,
+    build_task_action_keyboard,
     build_task_actions_keyboard,
     get_menu_action,
 )
@@ -109,11 +115,22 @@ class FakeStore:
 
     def update_status(self, task_id: str, status: str):
         self.status_updates.append((task_id, status))
+        if task_id == self.record.task_id:
+            self.record = TaskRecord(
+                task_id=self.record.task_id,
+                project_name=self.record.project_name,
+                status=status,
+                workspace_path=self.record.workspace_path,
+                created_at=self.record.created_at,
+            )
         return True
 
 
-def make_callback_context(record: TaskRecord):
-    return SimpleNamespace(application=SimpleNamespace(bot_data={"orchestrator": SimpleNamespace(store=FakeStore(record))}))
+def make_callback_context(record: TaskRecord, args: list[str] | None = None):
+    return SimpleNamespace(
+        args=args or [],
+        application=SimpleNamespace(bot_data={"orchestrator": SimpleNamespace(store=FakeStore(record))}),
+    )
 
 
 def write_successful_post_run_artifacts(workspace: Path) -> None:
@@ -121,6 +138,7 @@ def write_successful_post_run_artifacts(workspace: Path) -> None:
     (workspace / "codex_exit_code.txt").write_text("0\n", encoding="utf-8")
     (workspace / "diff.patch").write_text("diff --git a/app.py b/app.py\n+change\n", encoding="utf-8")
     (workspace / "test_report.md").write_text("Exit code: 0\n", encoding="utf-8")
+    (workspace / "codex_prompt.md").write_text("Use Codex.\n", encoding="utf-8")
 
 
 def test_start_message_mentions_main_actions():
@@ -209,8 +227,8 @@ def test_handle_callback_shows_post_run_keyboard_after_successful_codex_run(monk
     asyncio.run(handle_callback(update, make_callback_context(record)))
 
     markup = update.callback_query.edits[-1]["reply_markup"]
-    assert "🔍 Show diff" in button_text(markup)
-    assert "✅ Commit changes" in button_text(markup)
+    assert "🔍 Показать diff" in button_text(markup)
+    assert "✅ Закоммитить изменения" in button_text(markup)
 
 
 def test_handle_callback_confirm_commit_shows_push_button_after_mocked_commit(monkeypatch, tmp_path):
@@ -263,10 +281,10 @@ def test_task_actions_keyboard_contains_expected_buttons():
     markup = build_task_actions_keyboard("TASK-0002")
 
     texts = button_text(markup)
-    assert "▶️ Run Codex" in texts
-    assert "📄 Task details" in texts
+    assert "▶️ Запустить Codex" in texts
+    assert "📄 Детали задачи" in texts
     assert "🧠 Codex prompt" in texts
-    assert "🗂 Recent tasks" in texts
+    assert "🗂 Последние задачи" in texts
 
 
 def test_codex_post_run_keyboard_contains_safe_first_layer_actions():
@@ -274,15 +292,146 @@ def test_codex_post_run_keyboard_contains_safe_first_layer_actions():
 
     texts = button_text(markup)
     data = button_data(markup)
-    assert "🔍 Show diff" in texts
-    assert "🧪 Run tests again" in texts
-    assert "✅ Commit changes" in texts
-    assert "🧹 Discard changes" in texts
+    assert "🔍 Показать diff" in texts
+    assert "🧪 Запустить тесты ещё раз" in texts
+    assert "✅ Закоммитить изменения" in texts
+    assert "🧹 Откатить изменения" in texts
     assert "task:show_diff:TASK-0013" in data
     assert "task:tests_again:TASK-0013" in data
     assert "task:commit:TASK-0013" in data
     assert "task:discard:TASK-0013" in data
+    assert "tasks:recent" in data
     assert all(len(item.encode("utf-8")) <= 64 for item in data)
+
+
+def test_task_result_state_ready_for_post_run_actions(tmp_path):
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = make_task("TASK-0013")
+    record = TaskRecord(record.task_id, record.project_name, record.status, str(workspace), record.created_at)
+
+    assert task_result_state(record) == TASK_RESULT_READY_FOR_POST_RUN_ACTIONS
+
+
+def test_task_action_keyboard_prompt_ready_shows_run_codex():
+    markup = build_task_action_keyboard(make_task("TASK-0002"))
+
+    texts = button_text(markup)
+    assert "▶️ Запустить Codex" in texts
+    assert "🔍 Показать diff" not in texts
+
+
+def test_task_action_keyboard_after_codex_run_shows_post_run_controls(tmp_path):
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+
+    markup = build_task_action_keyboard(record)
+    texts = button_text(markup)
+
+    assert task_result_state(record) == TASK_RESULT_READY_FOR_POST_RUN_ACTIONS
+    assert "🔍 Показать diff" in texts
+    assert "▶️ Запустить Codex" not in texts
+
+
+def test_task_action_keyboard_committed_shows_push_branch(tmp_path):
+    record = TaskRecord("TASK-0013", "pdlc-bot", "committed", str(tmp_path / "TASK-0013"), "2026-05-30T00:00:00+00:00")
+
+    markup = build_task_action_keyboard(record)
+
+    assert task_result_state(record) == TASK_RESULT_COMMITTED
+    assert button_text(markup) == ["📤 Push branch", "🗂 Последние задачи"]
+
+
+def test_show_diff_callback_keeps_post_run_buttons(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeCallbackUpdate("task:show_diff:TASK-0013")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    assert "Diff for TASK-0013" in update.callback_query.edits[-1]["text"]
+    assert "🔍 Показать diff" in button_text(update.callback_query.edits[-1]["reply_markup"])
+
+
+def test_run_tests_again_callback_keeps_post_run_buttons(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeCallbackUpdate("task:tests_again:TASK-0013")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    assert "Повторный запуск тестов пока не реализован." in update.callback_query.edits[-1]["text"]
+    assert "🔍 Показать diff" in button_text(update.callback_query.edits[-1]["reply_markup"])
+
+
+def test_task_details_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeCallbackUpdate("task:details:TASK-0013")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    texts = button_text(update.callback_query.edits[-1]["reply_markup"])
+    assert "🔍 Показать diff" in texts
+    assert "▶️ Запустить Codex" not in texts
+
+
+def test_task_command_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeUpdate("/task TASK-0013")
+
+    asyncio.run(task(update, make_callback_context(record, args=["TASK-0013"])))
+
+    texts = button_text(update.message.replies[-1]["reply_markup"])
+    assert "🔍 Показать diff" in texts
+    assert "▶️ Запустить Codex" not in texts
+
+
+def test_prompt_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeUpdate("/prompt TASK-0013")
+
+    asyncio.run(prompt(update, make_callback_context(record, args=["TASK-0013"])))
+
+    texts = button_text(update.message.replies[-1]["reply_markup"])
+    assert "🔍 Показать diff" in texts
+    assert "▶️ Запустить Codex" not in texts
+
+
+def test_task_action_keyboard_running_shows_running_state(tmp_path):
+    record = TaskRecord("TASK-0015", "pdlc-bot", "codex_running", str(tmp_path / "TASK-0015"), "2026-05-30T00:00:00+00:00")
+
+    markup = build_task_action_keyboard(record)
+
+    assert task_result_state(record) == "running"
+    assert button_text(markup) == ["⏳ Running", "🗂 Последние задачи"]
+
+
+def test_task_action_callback_data_is_compact_for_all_states(tmp_path):
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    records = [
+        make_task("TASK-0002"),
+        TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00"),
+        TaskRecord("TASK-0014", "pdlc-bot", "committed", str(tmp_path / "TASK-0014"), "2026-05-30T00:00:00+00:00"),
+        TaskRecord("TASK-0015", "pdlc-bot", "codex_running", str(tmp_path / "TASK-0015"), "2026-05-30T00:00:00+00:00"),
+    ]
+
+    for record in records:
+        assert all(len(item.encode("utf-8")) <= 64 for item in button_data(build_task_action_keyboard(record)))
 
 
 def test_confirm_keyboards_separate_commit_push_and_discard():

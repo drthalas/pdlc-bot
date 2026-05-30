@@ -85,15 +85,16 @@ When the user clicks `Run Codex`:
   <codex_bin> exec -C <project_local_path> - < <workspace>/codex_prompt.md
   ```
   The Codex subprocess uses `shell=False`, non-interactive `codex exec`, stdin from `codex_prompt.md`, and a configurable timeout (`PDLC_CODEX_TIMEOUT_SECONDS`, default `900`). The top-level interactive `codex` command must not be used for this path because it expects a terminal. After Codex exits, the runner saves `git diff`, `git diff --stat`, runs project test commands, and writes test/developer reports. It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
-- After successful `codex_run`, if `diff.patch` is non-empty and `test_report.md` contains only passing exit codes, Telegram shows:
+- Task UI is state-aware after Codex execution. If `codex_exit_code.txt` is `0`, `diff.patch` is non-empty, and `test_report.md` contains only passing exit codes, `/task`, `/prompt`, task details, and diff views show post-run controls instead of another Run Codex button.
+- After successful `codex_run`, Telegram shows:
   ```text
-  🔍 Show diff
-  🧪 Run tests again
-  ✅ Commit changes
-  🧹 Discard changes
+  🔍 Показать diff
+  🧪 Запустить тесты ещё раз
+  ✅ Закоммитить изменения
+  🧹 Откатить изменения
   ```
 - `Show diff` reads the task artifact `diff.patch` and displays it in Telegram, truncated when needed. If the patch is missing, the bot falls back to available artifact context.
-- `Run tests again` is a placeholder and currently responds `not implemented yet`.
+- `Run tests again` is a placeholder and currently responds `Повторный запуск тестов пока не реализован.`
 - `Commit changes` never commits directly. It first shows a confirmation button. Confirm commit:
   - reads the current git branch with `git branch --show-current`;
   - requires the current branch to match the task `branch_name.txt`;
@@ -195,10 +196,10 @@ After execution, send a summary:
 
 Next buttons:
 
-- `🔍 Show diff`
-- `🧪 Run tests again`
-- `✅ Commit changes`
-- `🧹 Discard changes`
+- `🔍 Показать diff`
+- `🧪 Запустить тесты ещё раз`
+- `✅ Закоммитить изменения`
+- `🧹 Откатить изменения`
 
 After confirmed commit succeeds:
 
