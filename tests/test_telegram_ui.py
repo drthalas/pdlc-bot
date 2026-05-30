@@ -282,8 +282,17 @@ def test_recent_tasks_message_without_tasks():
     assert build_recent_tasks_message([]) == "No tasks created yet."
 
 
-def test_recent_tasks_message_missing_input_falls_back_to_task_id():
-    message = build_recent_tasks_message([make_task("TASK-0002")])
+def test_recent_tasks_message_missing_input_falls_back_to_task_id(tmp_path):
+    workspace = tmp_path / "TASK-0002"
+    workspace.mkdir()
+    record = TaskRecord(
+        "TASK-0002",
+        "pdlc-bot",
+        "prompt_ready",
+        str(workspace),
+        "2026-05-30T00:00:00+00:00",
+    )
+    message = build_recent_tasks_message([record])
 
     assert "TASK-0002 — pdlc-bot — TASK-0002" in message
 
