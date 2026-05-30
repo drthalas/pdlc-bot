@@ -2,7 +2,7 @@
 
 Implementation status: started.
 
-Current stage: disabled-by-default UI skeleton plus prepare-command-only modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, and `branch_prepare` can write branch-preparation artifacts. No actual Codex execution happens yet.
+Current stage: disabled-by-default UI skeleton plus prepare-command-only modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, and `git_check` can run a read-only `git status --porcelain` check before preparing artifacts. No actual Codex execution happens yet.
 
 ## Goal
 
@@ -65,6 +65,12 @@ When the user clicks `Run Codex`:
   ```
   It writes `git_status_before.txt`, `branch_name.txt`, `run_codex_command.txt`, and `run_codex.sh`. It does not create a branch, run `git checkout`, run Codex CLI, commit, push, or deploy.
 - In the current no-subprocess stage, `branch_prepare` does not execute `git status` yet. `git_status_before.txt` records that this check is intentionally deferred until the checked runner stage.
+- Git check mode performs only one read-only subprocess command:
+  ```text
+  PDLC_CODEX_RUNNER_MODE=git_check
+  git status --porcelain
+  ```
+  The command runs in the target project repo with a timeout. If output is non-empty, the runner saves `git_status_before.txt` and stops. If output is empty, it writes `branch_name.txt`, `run_codex_command.txt`, and `run_codex.sh`. It still does not create branches, run `git checkout`, run Codex CLI, commit, push, or deploy.
 - Never run Codex automatically when a task is created.
 - Run only after an explicit user click.
 - Do not commit.
@@ -158,8 +164,8 @@ Next buttons:
 1. Config flag + disabled button. Done.
 2. Runner skeleton without Codex execution: prepare command only. Started with `run_codex_command.txt` and `run_codex.sh`.
 3. Branch preparation without branch creation. Started with `branch_name.txt` and `git_status_before.txt` placeholder.
-4. Checked git status collection without Codex execution.
-5. Branch creation + git status checks.
+4. Checked git status collection without Codex execution. Started with `git_check`.
+5. Branch creation only after explicit approval.
 6. Actual Codex CLI execution.
 7. Logs/artifacts capture.
 8. Test runner.

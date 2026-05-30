@@ -152,10 +152,21 @@ Supported runner modes:
   - `branch_name.txt`
   - `run_codex_command.txt`
   - `run_codex.sh`
+- `git_check`: run only a read-only `git status --porcelain` check in the target repo:
+  - if the working tree is dirty, save `git_status_before.txt` and stop;
+  - if the working tree is clean, also create `branch_name.txt`, `run_codex_command.txt`, and `run_codex.sh`.
 
 Prepare modes still do not execute Codex CLI, create branches, run subprocesses, commit, push, or deploy. They only write command text, scripts, and branch-preparation metadata for a human to inspect and run manually.
 
 `branch_prepare` currently does not execute `git status` from the bot because subprocess execution is intentionally disabled at this stage. It writes a placeholder `git_status_before.txt` with a TODO for the future checked runner.
+
+`git_check` uses a narrow read-only subprocess command with a timeout:
+
+```bash
+git status --porcelain
+```
+
+It still does not execute Codex CLI, create branches, checkout, commit, push, or deploy.
 
 ## Mac mini operations
 

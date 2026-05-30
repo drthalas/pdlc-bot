@@ -4,8 +4,10 @@ import json
 import os
 import re
 import shlex
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from app.task_store import TaskRecord
 
@@ -16,6 +18,7 @@ PREPARE_COMMAND_FILENAME = "run_codex_command.txt"
 PREPARE_SCRIPT_FILENAME = "run_codex.sh"
 GIT_STATUS_BEFORE_FILENAME = "git_status_before.txt"
 BRANCH_NAME_FILENAME = "branch_name.txt"
+GIT_STATUS_TIMEOUT_SECONDS = 10
 
 
 def is_codex_runner_enabled() -> bool:
@@ -42,6 +45,17 @@ class CodexBranchPrepareResult(CodexPrepareResult):
     branch_name: str
     branch_name_path: Path
     git_status_path: Path
+
+
+@dataclass(frozen=True)
+class CodexGitCheckResult:
+    is_clean: bool
+    git_status: str
+    git_status_path: Path
+    branch_name: str | None = None
+    branch_name_path: Path | None = None
+    command_path: Path | None = None
+    script_path: Path | None = None
 
 
 def build_codex_runner_disabled_message(task_id: str) -> str:
@@ -152,12 +166,82 @@ def is_git_status_clean(status_text: str) -> bool:
     return "nothing to commit, working tree clean" in lowered
 
 
+def read_git_status_porcelain(project_local_path: str, timeout: int = GIT_STATUS_TIMEOUT_SECONDS) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=project_local_path,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f"git status timed out after {timeout} seconds") from error
+    except OSError as error:
+        raise RuntimeError(f"git status failed to start: {error}") from error
+
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}"
+        raise RuntimeError(f"git status failed: {detail}")
+
+    return result.stdout
+
+
 def build_git_status_placeholder(project_local_path: str) -> str:
     return (
         "Git status was not executed by pdlc-bot in branch_prepare mode.\n\n"
         "Reason: subprocess execution is intentionally disabled for this stage.\n"
         "TODO: collect `git status --short --branch` before actual branch creation.\n\n"
         f"Target repo: {project_local_path}\n"
+    )
+
+
+def write_codex_git_check_artifacts(
+    task: TaskRecord,
+    git_status_reader: Callable[[str], str] = read_git_status_porcelain,
+) -> CodexGitCheckResult:
+    project_local_path = _load_project_local_path(task)
+    if project_local_path is None:
+        raise ValueError(f"Project local_path not found for {task.task_id}.")
+
+    workspace_path = Path(task.workspace_path)
+    workspace_path.mkdir(parents=True, exist_ok=True)
+    git_status = git_status_reader(project_local_path)
+    git_status_path = workspace_path / GIT_STATUS_BEFORE_FILENAME
+    git_status_path.write_text(git_status, encoding="utf-8")
+
+    if not is_git_status_clean(git_status):
+        return CodexGitCheckResult(
+            is_clean=False,
+            git_status=git_status,
+            git_status_path=git_status_path,
+        )
+
+    branch_name = build_branch_name(task)
+    command = build_codex_prepare_command(task, project_local_path=project_local_path)
+    prepare_result = _write_prepare_command_and_script(
+        workspace_path,
+        command,
+        [
+            "# Prepared by pdlc-bot Codex Runner git_check mode.",
+            "# Working tree was clean when checked by the bot.",
+            "# No branch was created by the bot.",
+            "# No command was executed by the bot.",
+            f"# Intended branch: {branch_name}",
+        ],
+    )
+    branch_name_path = workspace_path / BRANCH_NAME_FILENAME
+    branch_name_path.write_text(f"{branch_name}\n", encoding="utf-8")
+
+    return CodexGitCheckResult(
+        is_clean=True,
+        git_status=git_status,
+        git_status_path=git_status_path,
+        branch_name=branch_name,
+        branch_name_path=branch_name_path,
+        command_path=prepare_result.command_path,
+        script_path=prepare_result.script_path,
     )
 
 
@@ -220,6 +304,32 @@ def build_codex_branch_prepare_message(task: TaskRecord, result: CodexBranchPrep
     )
 
 
+def build_codex_git_check_message(task: TaskRecord, result: CodexGitCheckResult) -> str:
+    if not result.is_clean:
+        return (
+            "Codex Runner git_check mode.\n"
+            "Working tree is dirty.\n"
+            "No branch was created.\n"
+            "No command was executed.\n\n"
+            f"Task: {task.task_id}\n\n"
+            "Artifacts:\n"
+            f"- {result.git_status_path}"
+        )
+
+    return (
+        "Codex Runner git_check mode. Working tree is clean.\n"
+        "No branch was created.\n"
+        "No command was executed.\n\n"
+        f"Task: {task.task_id}\n"
+        f"Branch: {result.branch_name}\n\n"
+        "Artifacts:\n"
+        f"- {result.git_status_path}\n"
+        f"- {result.branch_name_path}\n"
+        f"- {result.command_path}\n"
+        f"- {result.script_path}"
+    )
+
+
 def build_codex_dry_run_command(task: TaskRecord) -> str:
     return build_codex_prepare_command(task)
 
@@ -235,6 +345,12 @@ def build_codex_dry_run_message(task: TaskRecord) -> str:
 
 def build_codex_runner_response(task: TaskRecord) -> str:
     mode = get_codex_runner_mode()
+    if mode == "git_check":
+        try:
+            return build_codex_git_check_message(task, write_codex_git_check_artifacts(task))
+        except (RuntimeError, ValueError) as error:
+            return f"Codex Runner git_check mode cannot continue.\n\n{error}"
+
     if mode == "branch_prepare":
         try:
             return build_codex_branch_prepare_message(task, write_codex_branch_prepare_artifacts(task))

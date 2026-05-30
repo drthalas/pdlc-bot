@@ -4,6 +4,7 @@ from pathlib import Path
 from app.codex_runner import (
     build_branch_name,
     build_codex_branch_prepare_message,
+    build_codex_git_check_message,
     build_codex_prepare_command,
     build_codex_prepare_message,
     build_codex_dry_run_command,
@@ -12,7 +13,9 @@ from app.codex_runner import (
     get_codex_runner_mode,
     is_git_status_clean,
     is_codex_runner_enabled,
+    read_git_status_porcelain,
     write_codex_branch_prepare_artifacts,
+    write_codex_git_check_artifacts,
     write_codex_prepare_artifacts,
 )
 from app.task_store import TaskRecord
@@ -60,6 +63,12 @@ def test_codex_runner_branch_prepare_mode_is_recognized(monkeypatch):
     monkeypatch.setenv("PDLC_CODEX_RUNNER_MODE", "branch_prepare")
 
     assert get_codex_runner_mode() == "branch_prepare"
+
+
+def test_codex_runner_git_check_mode_is_recognized(monkeypatch):
+    monkeypatch.setenv("PDLC_CODEX_RUNNER_MODE", "git_check")
+
+    assert get_codex_runner_mode() == "git_check"
 
 
 def test_codex_prepare_command_uses_project_path_and_prompt(monkeypatch, tmp_path):
@@ -208,3 +217,116 @@ def test_codex_branch_prepare_message_reports_no_branch_or_command(monkeypatch, 
     assert "agent/TASK-0007-add-persistent-menu" in message
     assert "git_status_before.txt" in message
     assert "branch_name.txt" in message
+
+
+def test_codex_git_check_clean_status_creates_artifacts(monkeypatch, tmp_path):
+    monkeypatch.setenv("PDLC_CODEX_BIN", "/custom/codex")
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("Add persistent menu\n", encoding="utf-8")
+    (workspace / "codex_prompt.md").write_text("Do the task.\n", encoding="utf-8")
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = TaskRecord(
+        task_id="TASK-0007",
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+
+    result = write_codex_git_check_artifacts(task, git_status_reader=lambda local_path: "")
+
+    assert result.is_clean is True
+    assert result.git_status_path == workspace / "git_status_before.txt"
+    assert result.git_status_path.read_text(encoding="utf-8") == ""
+    assert result.branch_name == "agent/TASK-0007-add-persistent-menu"
+    assert result.branch_name_path == workspace / "branch_name.txt"
+    assert result.command_path == workspace / "run_codex_command.txt"
+    assert result.script_path == workspace / "run_codex.sh"
+    assert result.script_path.stat().st_mode & 0o111
+
+    message = build_codex_git_check_message(task, result)
+    assert "Codex Runner git_check mode. Working tree is clean." in message
+    assert "No branch was created" in message
+    assert "No command was executed" in message
+
+
+def test_codex_git_check_dirty_status_stops_flow(tmp_path):
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("Add persistent menu\n", encoding="utf-8")
+    (workspace / "codex_prompt.md").write_text("Do the task.\n", encoding="utf-8")
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = TaskRecord(
+        task_id="TASK-0007",
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+
+    result = write_codex_git_check_artifacts(task, git_status_reader=lambda local_path: " M app/main.py\n")
+
+    assert result.is_clean is False
+    assert result.git_status_path.read_text(encoding="utf-8") == " M app/main.py\n"
+    assert result.branch_name is None
+    assert not (workspace / "branch_name.txt").exists()
+    assert not (workspace / "run_codex_command.txt").exists()
+    assert not (workspace / "run_codex.sh").exists()
+
+    message = build_codex_git_check_message(task, result)
+    assert "Working tree is dirty" in message
+    assert "No branch was created" in message
+    assert "No command was executed" in message
+
+
+def test_codex_git_check_error_is_safe(tmp_path):
+    workspace = tmp_path / "TASK-0007"
+    workspace.mkdir()
+    (workspace / "project.json").write_text('{"local_path": "/tmp/project"}\n', encoding="utf-8")
+    task = TaskRecord(
+        task_id="TASK-0007",
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+
+    def failing_reader(local_path: str) -> str:
+        raise RuntimeError("git status timed out after 10 seconds")
+
+    try:
+        write_codex_git_check_artifacts(task, git_status_reader=failing_reader)
+    except RuntimeError as error:
+        assert "timed out" in str(error)
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+
+def test_read_git_status_uses_only_read_only_git_status(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return Result()
+
+    monkeypatch.setattr("app.codex_runner.subprocess.run", fake_run)
+
+    assert read_git_status_porcelain("/tmp/project", timeout=3) == ""
+    assert calls == [
+        (
+            ["git", "status", "--porcelain"],
+            {
+                "cwd": "/tmp/project",
+                "capture_output": True,
+                "text": True,
+                "timeout": 3,
+                "check": False,
+            },
+        )
+    ]
