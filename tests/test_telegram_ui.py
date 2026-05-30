@@ -1,6 +1,9 @@
 import asyncio
+from pathlib import Path
+from types import SimpleNamespace
 
 from app.project_registry import Project
+from app.post_run_controls import PostRunActionResult
 from app.task_store import TaskRecord
 from app.telegram_bot import handle_callback, handle_text
 from app.telegram_ui import (
@@ -9,10 +12,15 @@ from app.telegram_ui import (
     RUNBOOK_BUTTON,
     STATUS_BUTTON,
     TASKS_BUTTON,
+    build_codex_post_run_keyboard,
+    build_commit_confirm_keyboard,
+    build_discard_confirm_keyboard,
     build_main_menu_keyboard,
     build_persistent_menu_keyboard,
     build_project_details_message,
     build_project_keyboard,
+    build_push_branch_keyboard,
+    build_push_confirm_keyboard,
     build_recent_tasks_keyboard,
     build_recent_tasks_message,
     build_runbook_message,
@@ -91,6 +99,30 @@ class FakeCallbackUpdate:
         self.callback_query = FakeCallbackQuery(data)
 
 
+class FakeStore:
+    def __init__(self, record: TaskRecord):
+        self.record = record
+        self.status_updates = []
+
+    def get_task(self, task_id: str):
+        return self.record if task_id == self.record.task_id else None
+
+    def update_status(self, task_id: str, status: str):
+        self.status_updates.append((task_id, status))
+        return True
+
+
+def make_callback_context(record: TaskRecord):
+    return SimpleNamespace(application=SimpleNamespace(bot_data={"orchestrator": SimpleNamespace(store=FakeStore(record))}))
+
+
+def write_successful_post_run_artifacts(workspace: Path) -> None:
+    workspace.mkdir()
+    (workspace / "codex_exit_code.txt").write_text("0\n", encoding="utf-8")
+    (workspace / "diff.patch").write_text("diff --git a/app.py b/app.py\n+change\n", encoding="utf-8")
+    (workspace / "test_report.md").write_text("Exit code: 0\n", encoding="utf-8")
+
+
 def test_start_message_mentions_main_actions():
     message = build_start_message()
 
@@ -160,6 +192,50 @@ def test_handle_callback_routes_runbook_action(monkeypatch):
     assert "Mac mini runbook:" in update.callback_query.edits[0]["text"]
 
 
+def test_handle_callback_shows_post_run_keyboard_after_successful_codex_run(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord(
+        task_id="TASK-0013",
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+    monkeypatch.setattr("app.telegram_bot.build_codex_runner_response", lambda task: "Codex Runner codex_run mode.\nCodex finished.")
+    update = FakeCallbackUpdate("task:run_codex:TASK-0013")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    markup = update.callback_query.edits[-1]["reply_markup"]
+    assert "🔍 Show diff" in button_text(markup)
+    assert "✅ Commit changes" in button_text(markup)
+
+
+def test_handle_callback_confirm_commit_shows_push_button_after_mocked_commit(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    workspace.mkdir()
+    record = TaskRecord(
+        task_id="TASK-0013",
+        project_name="pdlc-bot",
+        status="prompt_ready",
+        workspace_path=str(workspace),
+        created_at="2026-05-30T00:00:00+00:00",
+    )
+    monkeypatch.setattr(
+        "app.telegram_bot.commit_task_changes",
+        lambda task: PostRunActionResult(True, "Committed local changes.", branch_name="agent/TASK-0013-post-run"),
+    )
+    update = FakeCallbackUpdate("task:confirm_commit:TASK-0013")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    assert "Committed local changes." in update.callback_query.edits[-1]["text"]
+    assert "📤 Push branch" in button_text(update.callback_query.edits[-1]["reply_markup"])
+
+
 def test_recent_tasks_message_with_tasks():
     message = build_recent_tasks_message([make_task("TASK-0002"), make_task("TASK-0001")])
 
@@ -191,6 +267,41 @@ def test_task_actions_keyboard_contains_expected_buttons():
     assert "📄 Task details" in texts
     assert "🧠 Codex prompt" in texts
     assert "🗂 Recent tasks" in texts
+
+
+def test_codex_post_run_keyboard_contains_safe_first_layer_actions():
+    markup = build_codex_post_run_keyboard("TASK-0013")
+
+    texts = button_text(markup)
+    data = button_data(markup)
+    assert "🔍 Show diff" in texts
+    assert "🧪 Run tests again" in texts
+    assert "✅ Commit changes" in texts
+    assert "🧹 Discard changes" in texts
+    assert "task:show_diff:TASK-0013" in data
+    assert "task:tests_again:TASK-0013" in data
+    assert "task:commit:TASK-0013" in data
+    assert "task:discard:TASK-0013" in data
+    assert all(len(item.encode("utf-8")) <= 64 for item in data)
+
+
+def test_confirm_keyboards_separate_commit_push_and_discard():
+    assert button_data(build_commit_confirm_keyboard("TASK-0013")) == [
+        "task:confirm_commit:TASK-0013",
+        "task:details:TASK-0013",
+    ]
+    assert button_data(build_push_branch_keyboard("TASK-0013")) == [
+        "task:push:TASK-0013",
+        "task:details:TASK-0013",
+    ]
+    assert button_data(build_push_confirm_keyboard("TASK-0013")) == [
+        "task:confirm_push:TASK-0013",
+        "task:details:TASK-0013",
+    ]
+    assert button_data(build_discard_confirm_keyboard("TASK-0013")) == [
+        "task:confirm_discard:TASK-0013",
+        "task:details:TASK-0013",
+    ]
 
 
 def test_recent_tasks_keyboard_contains_task_buttons():

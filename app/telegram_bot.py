@@ -9,13 +9,26 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from app.codex_runner import build_codex_runner_response
 from app.orchestrator import Orchestrator
+from app.post_run_controls import (
+    build_commit_message,
+    build_show_diff_message,
+    commit_task_changes,
+    discard_task_changes,
+    push_task_branch,
+    should_show_post_run_controls,
+)
 from app.task_messages import build_prompt_response, format_task_details_response
 from app.task_workspace import list_artifacts
 from app.telegram_ui import (
+    build_codex_post_run_keyboard,
+    build_commit_confirm_keyboard,
+    build_discard_confirm_keyboard,
     build_main_menu_keyboard,
     build_persistent_menu_keyboard,
     build_project_details_message,
     build_project_keyboard,
+    build_push_branch_keyboard,
+    build_push_confirm_keyboard,
     build_projects_message,
     build_recent_tasks_keyboard,
     build_recent_tasks_message,
@@ -312,10 +325,105 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         record = orchestrator.store.get_task(task_id) or record
         response = build_codex_runner_response(record)
         orchestrator.store.update_status(task_id, final_codex_status_from_response(response))
+        is_successful_codex_run = "Codex Runner codex_run mode." in response and "Codex finished." in response
+        reply_markup = (
+            build_codex_post_run_keyboard(record.task_id)
+            if is_successful_codex_run and should_show_post_run_controls(record)
+            else build_task_details_keyboard(record.task_id)
+        )
         await query.edit_message_text(
             response,
-            reply_markup=build_task_details_keyboard(record.task_id),
+            reply_markup=reply_markup,
         )
+        return
+
+    if data.startswith("task:show_diff:"):
+        task_id = data.removeprefix("task:show_diff:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        await query.edit_message_text(
+            build_show_diff_message(record),
+            reply_markup=build_codex_post_run_keyboard(record.task_id),
+        )
+        return
+
+    if data.startswith("task:tests_again:"):
+        task_id = data.removeprefix("task:tests_again:")
+        await query.edit_message_text(
+            "Run tests again is not implemented yet.",
+            reply_markup=build_codex_post_run_keyboard(task_id),
+        )
+        return
+
+    if data.startswith("task:commit:"):
+        task_id = data.removeprefix("task:commit:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        await query.edit_message_text(
+            f"Commit local changes for {task_id}?\n\nMessage: {build_commit_message(record)}",
+            reply_markup=build_commit_confirm_keyboard(task_id),
+        )
+        return
+
+    if data.startswith("task:confirm_commit:"):
+        task_id = data.removeprefix("task:confirm_commit:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        result = commit_task_changes(record)
+        await query.edit_message_text(
+            result.message,
+            reply_markup=build_push_branch_keyboard(task_id) if result.ok else build_task_details_keyboard(task_id),
+        )
+        return
+
+    if data.startswith("task:push:"):
+        task_id = data.removeprefix("task:push:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        await query.edit_message_text(
+            f"Push branch for {task_id}?\n\nThis will run `git push -u origin <branch>`.",
+            reply_markup=build_push_confirm_keyboard(task_id),
+        )
+        return
+
+    if data.startswith("task:confirm_push:"):
+        task_id = data.removeprefix("task:confirm_push:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        result = push_task_branch(record)
+        await query.edit_message_text(result.message, reply_markup=build_task_details_keyboard(task_id))
+        return
+
+    if data.startswith("task:discard:"):
+        task_id = data.removeprefix("task:discard:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        await query.edit_message_text(
+            f"Discard local changes for {task_id}?\n\nThis will run `git reset --hard` and `git checkout main`.",
+            reply_markup=build_discard_confirm_keyboard(task_id),
+        )
+        return
+
+    if data.startswith("task:confirm_discard:"):
+        task_id = data.removeprefix("task:confirm_discard:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Task {task_id} not found.")
+            return
+        result = discard_task_changes(record)
+        await query.edit_message_text(result.message, reply_markup=build_task_details_keyboard(task_id))
         return
 
     await query.edit_message_text("Unknown action.")

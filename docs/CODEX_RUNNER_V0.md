@@ -2,7 +2,7 @@
 
 Implementation status: started.
 
-Current stage: disabled-by-default UI skeleton plus safe runner modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, `git_check` can run a read-only `git status --porcelain` check before preparing artifacts, `branch_create` can create a local branch after a clean git check, and `codex_run` can execute Codex CLI after branch creation. No commit, push, PR, or deploy happens yet.
+Current stage: disabled-by-default UI skeleton plus safe runner modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, `git_check` can run a read-only `git status --porcelain` check before preparing artifacts, `branch_create` can create a local branch after a clean git check, and `codex_run` can execute Codex CLI after branch creation. Post-run controls can show the saved diff, request a confirmed local commit, request a separate confirmed branch push, or request a confirmed discard. No PR or deploy happens.
 
 ## Goal
 
@@ -85,10 +85,34 @@ When the user clicks `Run Codex`:
   <codex_bin> exec -C <project_local_path> - < <workspace>/codex_prompt.md
   ```
   The Codex subprocess uses `shell=False`, non-interactive `codex exec`, stdin from `codex_prompt.md`, and a configurable timeout (`PDLC_CODEX_TIMEOUT_SECONDS`, default `900`). The top-level interactive `codex` command must not be used for this path because it expects a terminal. After Codex exits, the runner saves `git diff`, `git diff --stat`, runs project test commands, and writes test/developer reports. It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
+- After successful `codex_run`, if `diff.patch` is non-empty and `test_report.md` contains only passing exit codes, Telegram shows:
+  ```text
+  🔍 Show diff
+  🧪 Run tests again
+  ✅ Commit changes
+  🧹 Discard changes
+  ```
+- `Show diff` reads the task artifact `diff.patch` and displays it in Telegram, truncated when needed. If the patch is missing, the bot falls back to available artifact context.
+- `Run tests again` is a placeholder and currently responds `not implemented yet`.
+- `Commit changes` never commits directly. It first shows a confirmation button. Confirm commit:
+  - reads the current git branch with `git branch --show-current`;
+  - requires the current branch to match the task `branch_name.txt`;
+  - requires the branch to match `agent/TASK-*`;
+  - runs `git status --porcelain`, blocks protected paths, and stages allowed files explicitly;
+  - runs `git commit -m "TASK-XXXX: <short task title>"`.
+- Push is not part of commit. After a successful commit, Telegram shows a separate `📤 Push branch` button. Push is disabled by default with `PDLC_ENABLE_GIT_PUSH=false`. When enabled with `PDLC_ENABLE_GIT_PUSH=true`, push still requires confirmation and runs:
+  ```text
+  git push -u origin <branch>
+  ```
+- `Discard changes` never discards directly. It first shows a confirmation button. Confirm discard:
+  - requires the current branch to match the task `branch_name.txt`;
+  - requires the branch to match `agent/TASK-*`;
+  - runs `git reset --hard`;
+  - runs `git checkout main`.
 - Never run Codex automatically when a task is created.
 - Run only after an explicit user click.
-- Do not commit.
-- Do not push.
+- Do not commit without explicit confirm.
+- Do not push without explicit confirm after commit.
 - Do not create PRs.
 - Do not deploy.
 - Do not modify `.env`.
@@ -173,9 +197,12 @@ Next buttons:
 
 - `🔍 Show diff`
 - `🧪 Run tests again`
-- `🔁 Ask Codex to fix`
-- `✅ Mark ready for review`
-- `❌ Stop`
+- `✅ Commit changes`
+- `🧹 Discard changes`
+
+After confirmed commit succeeds:
+
+- `📤 Push branch`
 
 ## Implementation plan
 
@@ -187,5 +214,5 @@ Next buttons:
 6. Actual Codex CLI execution. Started with `codex_run`.
 7. Logs/artifacts capture. Started with `codex_stdout.log`, `codex_stderr.log`, `codex_exit_code.txt`, `diff.patch`, `test_report.md`, and `developer_report.md`.
 8. Test runner. Started with configured project commands and fallback commands.
-9. Telegram report.
+9. Telegram report. Started with post-run controls for show diff, confirmed commit, separate confirmed push, and confirmed discard.
 10. Fix loop.

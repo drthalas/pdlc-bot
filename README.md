@@ -2,7 +2,7 @@
 
 Local Telegram-based PDLC orchestration bot for creating development task workspaces and Codex-ready prompts.
 
-Version `0.1` creates local task artifacts and a Codex-ready prompt. It does not run the Codex CLI, create branches, commit code, push to Git, call GitHub, or create pull requests.
+Version `0.1` creates local task artifacts and a Codex-ready prompt. Codex Runner is disabled by default; when enabled, it supports scoped local runner modes and confirmed post-run git actions. It does not deploy, call GitHub PR APIs, or create pull requests.
 
 The bot currently runs in prompt/artifact mode. Codex Runner is disabled by default; the future runner is specified in [docs/CODEX_RUNNER_V0.md](docs/CODEX_RUNNER_V0.md). See [docs/ROADMAP.md](docs/ROADMAP.md) for the broader PDLC roadmap.
 
@@ -203,6 +203,17 @@ git diff --stat
 
 It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
 
+After a successful `codex_run` with a non-empty `diff.patch` and passing tests, Telegram shows post-run controls:
+
+- `🔍 Show diff`: displays `diff.patch` from the task artifacts, truncated for Telegram when needed.
+- `🧪 Run tests again`: currently returns `not implemented yet`.
+- `✅ Commit changes`: asks for confirmation before running a local commit.
+- `🧹 Discard changes`: asks for confirmation before discarding the branch changes.
+
+Commit, push, and discard are intentionally separate steps. Confirm commit only runs on the current `agent/TASK-*` branch matching the task artifact, stages only allowed changed files explicitly, then creates a local commit with message `TASK-XXXX: <short task title>`. It does not push. After a successful commit, Telegram shows a separate `📤 Push branch` button. Push is disabled by default with `PDLC_ENABLE_GIT_PUSH=false`. When enabled with `PDLC_ENABLE_GIT_PUSH=true`, push still requires confirmation and runs only `git push -u origin <branch>`. Discard also requires confirmation and runs `git reset --hard` followed by `git checkout main`, only from the matching `agent/TASK-*` branch.
+
+Post-run controls do not deploy, create pull requests, or perform production actions.
+
 ## Mac mini operations
 
 Persistent deployment uses a user-level `launchd` service on the Mac mini under user `hermes`. The bot currently runs in Telegram MVP mode: task creation, local artifacts, `/task`, and `/prompt`.
@@ -232,4 +243,4 @@ Short memory files keep future Codex sessions focused:
 6. Review `codex_prompt.md` in the workspace if the prompt is too long for Telegram.
 7. Use the prompt manually with Codex when ready.
 
-This first version intentionally avoids automatic code editing, Codex CLI execution, Git branch/commit/push workflows, pull request creation, and other remote service calls.
+By default this version avoids automatic code editing, Codex CLI execution, Git branch/commit/push workflows, pull request creation, and other remote service calls. When Codex Runner modes are explicitly enabled, the runner remains scoped to the documented local git and Codex operations; deploys and PR creation are not part of the flow.

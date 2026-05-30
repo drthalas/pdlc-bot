@@ -95,6 +95,66 @@ def build_task_details_keyboard(task_id: str) -> InlineKeyboardMarkup:
     )
 
 
+def build_codex_post_run_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🔍 Show diff", callback_data=f"task:show_diff:{task_id}"),
+                InlineKeyboardButton("🧪 Run tests again", callback_data=f"task:tests_again:{task_id}"),
+            ],
+            [
+                InlineKeyboardButton("✅ Commit changes", callback_data=f"task:commit:{task_id}"),
+                InlineKeyboardButton("🧹 Discard changes", callback_data=f"task:discard:{task_id}"),
+            ],
+            [InlineKeyboardButton("📄 Task details", callback_data=f"task:details:{task_id}")],
+        ]
+    )
+
+
+def build_commit_confirm_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Confirm commit", callback_data=f"task:confirm_commit:{task_id}"),
+                InlineKeyboardButton("Cancel", callback_data=f"task:details:{task_id}"),
+            ]
+        ]
+    )
+
+
+def build_push_branch_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📤 Push branch", callback_data=f"task:push:{task_id}"),
+                InlineKeyboardButton("📄 Task details", callback_data=f"task:details:{task_id}"),
+            ]
+        ]
+    )
+
+
+def build_push_confirm_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📤 Confirm push", callback_data=f"task:confirm_push:{task_id}"),
+                InlineKeyboardButton("Cancel", callback_data=f"task:details:{task_id}"),
+            ]
+        ]
+    )
+
+
+def build_discard_confirm_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🧹 Confirm discard", callback_data=f"task:confirm_discard:{task_id}"),
+                InlineKeyboardButton("Cancel", callback_data=f"task:details:{task_id}"),
+            ]
+        ]
+    )
+
+
 def build_recent_tasks_message(tasks: list[TaskRecord]) -> str:
     if not tasks:
         return "No tasks created yet."
