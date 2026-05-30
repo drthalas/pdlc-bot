@@ -4,6 +4,8 @@ Local Telegram-based PDLC orchestration bot for creating development task worksp
 
 Version `0.1` creates local task artifacts and a Codex-ready prompt. It does not run the Codex CLI, create branches, commit code, push to Git, call GitHub, or create pull requests.
 
+The bot currently runs in prompt/artifact mode. Codex Runner is not enabled yet; the future runner is specified in [docs/CODEX_RUNNER_V0.md](docs/CODEX_RUNNER_V0.md). See [docs/ROADMAP.md](docs/ROADMAP.md) for the broader PDLC roadmap.
+
 ## Features
 
 - Telegram commands: `/start`, `/projects`, `/status`, `/tasks`, `/task <TASK-ID>`, `/prompt <TASK-ID>`
@@ -134,6 +136,11 @@ The slash commands `/start`, `/projects`, `/status`, `/tasks`, `/task TASK-ID`, 
 Persistent deployment uses a user-level `launchd` service on the Mac mini under user `hermes`. The bot currently runs in Telegram MVP mode: task creation, local artifacts, `/task`, and `/prompt`.
 
 See [docs/MAC_MINI_RUNBOOK.md](docs/MAC_MINI_RUNBOOK.md) for service status, logs, restart, update, and security procedures.
+
+## Roadmap
+
+- [PDLC roadmap](docs/ROADMAP.md)
+- [Codex Runner v0.1 specification](docs/CODEX_RUNNER_V0.md)
 
 ## Development Flow
 
