@@ -52,6 +52,24 @@ TELEGRAM_KEYWORDS = (
     "callback",
 )
 
+TASK_CARD_KEYWORDS = (
+    "карточк",
+    "детали задачи",
+    "technical details",
+    "технические детали",
+    "технические файлы",
+    "artifacts",
+    "artifact",
+    "архив",
+    "последние 10",
+    "старые задачи",
+    "список задач",
+    "progress",
+    "прогресс",
+    "этап",
+    "статус",
+)
+
 CODEX_RUNNER_KEYWORDS = (
     "codex",
     "runner",
@@ -72,6 +90,19 @@ TELEGRAM_FILES = [
     "app/post_run_controls.py",
     "tests/test_telegram_ui.py",
     "tests/test_task_messages.py",
+]
+
+TASK_CARD_FILES = [
+    "app/telegram_bot.py",
+    "app/telegram_ui.py",
+    "app/task_messages.py",
+    "app/task_store.py",
+    "app/post_run_controls.py",
+    "tests/test_telegram_ui.py",
+    "tests/test_task_messages.py",
+    "README.md",
+    "docs/CODEX_RUNNER_V0.md",
+    "DECISIONS.md",
 ]
 
 CODEX_RUNNER_FILES = [
@@ -111,6 +142,8 @@ def _matches(raw_request: str, keywords: tuple[str, ...]) -> bool:
 
 
 def task_focus(raw_request: str) -> str:
+    if _matches(raw_request, TASK_CARD_KEYWORDS):
+        return "task_card_ux"
     if _matches(raw_request, CODEX_RUNNER_KEYWORDS):
         return "codex_runner"
     if _matches(raw_request, MAC_MINI_KEYWORDS):
@@ -122,6 +155,8 @@ def task_focus(raw_request: str) -> str:
 
 def suggested_files_for_request(raw_request: str) -> list[str]:
     focus = task_focus(raw_request)
+    if focus == "task_card_ux":
+        return TASK_CARD_FILES
     if focus == "telegram_ux":
         return TELEGRAM_FILES
     if focus == "codex_runner":
@@ -140,6 +175,18 @@ def task_brief(raw_request: str) -> str:
 
 def current_behavior_for_request(raw_request: str) -> str:
     focus = task_focus(raw_request)
+    if focus == "task_card_ux":
+        return "\n".join(
+            [
+                "- `/task TASK-ID` показывает слишком много технической информации и artifacts.",
+                "- Пользователю сложно понять текущий этап задачи.",
+                "- В карточке задачи не видно прогресс: prompt, Codex, tests, review, commit.",
+                "- `/tasks` и Recent tasks недостаточно понятно показывают, о чём задача.",
+                "- Основной список задач может разрастаться.",
+                "- Старые задачи не вынесены в архив.",
+                "- Технические файлы не должны показываться по умолчанию.",
+            ]
+        )
     if focus == "telegram_ux":
         return (
             "Telegram UX сейчас недостаточно точно отражает ожидаемый сценарий пользователя: "
@@ -160,6 +207,19 @@ def current_behavior_for_request(raw_request: str) -> str:
 
 def desired_behavior_for_request(raw_request: str) -> str:
     focus = task_focus(raw_request)
+    if focus == "task_card_ux":
+        return "\n".join(
+            [
+                "- Карточка задачи показывает TASK-ID, название, проект, текущий статус и текущий этап.",
+                "- Карточка показывает прогресс: задача создана, prompt готов, Codex выполнен или нет, тесты пройдены или нет, review ожидается или выполнен, commit сделан или нет.",
+                "- Технические artifacts скрыты за кнопкой `🛠 Технические детали`.",
+                "- `/tasks` показывает максимум 10 последних задач.",
+                "- Старые задачи доступны через `📦 Архив задач`.",
+                "- Задачи в списке показываются с коротким названием из `input.md`.",
+                "- Все пользовательские Telegram-тексты на русском.",
+                "- Кнопки зависят от текущего состояния задачи.",
+            ]
+        )
     if focus == "telegram_ux":
         return (
             "Пользователь должен видеть понятный русский Telegram UX: релевантные кнопки, короткие сообщения, сохранение старых команд "
@@ -179,6 +239,19 @@ def desired_behavior_for_request(raw_request: str) -> str:
 
 def implementation_plan_for_request(raw_request: str) -> list[str]:
     focus = task_focus(raw_request)
+    if focus == "task_card_ux":
+        return [
+            "Найти, где формируется `/task TASK-ID` и Task details callback.",
+            "Вынести или обновить helper для user-friendly task card.",
+            "Добавить определение display state задачи по status и artifacts.",
+            "Скрыть raw artifact list из карточки задачи.",
+            "Добавить кнопку `🛠 Технические детали` и отдельный callback для artifacts.",
+            "Обновить `/tasks` и Recent tasks: максимум 10 задач.",
+            "Добавить `📦 Архив задач` для старых задач.",
+            "Добавить или переиспользовать task title extraction из `input.md`.",
+            "Убедиться, что post-run задачи не показывают `▶️ Запустить Codex` как основное действие.",
+            "Обновить тесты и документацию.",
+        ]
     if focus == "telegram_ux":
         return [
             "Прочитать Telegram handlers и UI helper functions, чтобы понять текущий routing команд, callbacks и keyboards.",
@@ -220,6 +293,23 @@ def implementation_plan_for_request(raw_request: str) -> list[str]:
 
 def acceptance_criteria_for_request(raw_request: str) -> list[str]:
     focus = task_focus(raw_request)
+    if focus == "task_card_ux":
+        return [
+            "`/task TASK-ID` не показывает raw artifacts по умолчанию.",
+            "Карточка задачи содержит название, проект, статус, текущий этап и progress checklist.",
+            "Есть кнопка `🛠 Технические детали`.",
+            "Technical details callback показывает artifacts отдельно.",
+            "`/tasks` показывает максимум 10 последних задач.",
+            "Если задач больше 10, есть кнопка `📦 Архив задач`.",
+            "Архив показывает более старые задачи.",
+            "Task title берётся из `input.md`.",
+            "Длинный title обрезается до 60–80 символов.",
+            "Missing `input.md` даёт fallback на `TASK-ID`.",
+            "Post-run task показывает diff/tests/review/commit/discard, а не `▶️ Запустить Codex`.",
+            "Все пользовательские Telegram-тексты на русском.",
+            "Callback data не длиннее 64 символов.",
+            "Старые команды не сломаны.",
+        ]
     if focus == "telegram_ux":
         return [
             "Пользовательские Telegram-тексты на русском там, где они видны пользователю.",
@@ -265,10 +355,20 @@ def safety_constraints_for_request(raw_request: str) -> list[str]:
 def out_of_scope_for_request(raw_request: str) -> list[str]:
     focus = task_focus(raw_request)
     items = [
-        "Commit/push/deploy.",
+        "Не делать commit/push.",
+        "Не делать deploy.",
         "Изменения в `.env`, local runtime config и secrets.",
         "Unrelated refactor или переписывание архитектуры целиком.",
     ]
+    if focus == "task_card_ux":
+        items.extend(
+            [
+                "Не реализовывать Railway dashboard.",
+                "Не реализовывать полноценный Reviewer Agent.",
+                "Не реализовывать Tester/QA Agent.",
+                "Не запускать Codex CLI вручную.",
+            ]
+        )
     if focus != "codex_runner":
         items.append("Изменения Codex Runner execution flow, если задача не про Runner.")
     if focus != "mac_mini":

@@ -86,6 +86,93 @@ When the task type is unclear, start with:
 - `TASKS.md`
 - `DECISIONS.md`
 
+## Task-Specific Decomposition
+
+Prompt Builder should not simply repeat a generic plan. It should decompose the user's short request into concrete requirements by looking for nouns, verbs, limits, UI labels, safety words, and explicit exclusions.
+
+For Russian Telegram UX requests:
+
+- preserve the original meaning of the user's wording
+- extract visible UI objects, such as task card, task list, archive, buttons, menus, and callbacks
+- extract limits, such as "последние 10" or "60-80 символов"
+- convert vague UX goals into checkable behavior
+- keep technical identifiers and artifact filenames in English when that matches the codebase
+- keep user-facing Telegram text in Russian
+
+For task card, task list, and archive requests, Prompt Builder should produce concrete sections instead of a generic "inspect files" plan.
+
+### Example: Task Card / Recent Tasks / Archive
+
+User request:
+
+```text
+В pdlc-bot сделай нормальную карточку задачи: чтобы было видно название, проект, текущий этап, что уже выполнено и какие действия доступны дальше. Технические файлы спрячь в отдельную кнопку. В списке задач показывай только последние 10, старые вынеси в архив. Все пользовательские тексты — на русском.
+```
+
+Expected `Current behavior` should mention:
+
+- `/task TASK-ID` shows too much technical information and artifacts
+- the user cannot easily understand the current task stage
+- the task card does not show progress across prompt, Codex, tests, review, and commit
+- `/tasks` and Recent tasks do not clearly show what each task is about
+- the main task list can grow indefinitely
+- old tasks are not moved behind an archive action
+- technical files should not be shown by default
+
+Expected `Desired behavior` should mention:
+
+- the task card shows TASK-ID, title, project, status, and current stage
+- the task card shows progress for created, prompt ready, Codex done, tests, review, and commit
+- technical artifacts are hidden behind `🛠 Технические детали`
+- `/tasks` shows at most 10 recent tasks
+- older tasks are available through `📦 Архив задач`
+- tasks are listed with short titles from `input.md`
+- all user-facing Telegram text is Russian
+- buttons depend on the current task state
+
+Expected `Suggested files to inspect` should include:
+
+- `app/telegram_bot.py`
+- `app/telegram_ui.py`
+- `app/task_messages.py`
+- `app/task_store.py`
+- `app/post_run_controls.py`
+- `tests/test_telegram_ui.py`
+- `tests/test_task_messages.py`
+- `README.md`
+- `docs/CODEX_RUNNER_V0.md`
+- `DECISIONS.md`
+
+Expected implementation plan should include concrete steps:
+
+1. Find where `/task TASK-ID` and the Task details callback are formatted.
+2. Add or update a helper for a user-friendly task card.
+3. Add display-state detection based on task status and artifacts.
+4. Hide the raw artifact list from the default task card.
+5. Add `🛠 Технические детали` and a callback that shows artifacts separately.
+6. Limit `/tasks` and Recent tasks to 10 recent tasks.
+7. Add `📦 Архив задач` for older tasks.
+8. Use task title extraction from `input.md`.
+9. Ensure post-run tasks do not show `▶️ Запустить Codex` as the primary action.
+10. Update tests and documentation.
+
+Expected acceptance criteria should be specific:
+
+- `/task TASK-ID` does not show raw artifacts by default
+- the task card contains title, project, status, current stage, and progress checklist
+- `🛠 Технические детали` exists
+- the technical-details callback shows artifacts separately
+- `/tasks` shows at most 10 recent tasks
+- when there are more than 10 tasks, `📦 Архив задач` is available
+- archive shows older tasks
+- task title comes from `input.md`
+- long title is truncated to 60-80 characters
+- missing `input.md` falls back to `TASK-ID`
+- post-run tasks show diff/tests/review/commit/discard instead of `▶️ Запустить Codex`
+- all user-facing Telegram text is Russian
+- callback data stays within 64 bytes
+- old slash commands still work
+
 ## Acceptance Criteria Guidance
 
 Telegram UX prompts should ask Codex to verify that:

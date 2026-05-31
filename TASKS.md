@@ -15,6 +15,7 @@
 - Safe post-run controls.
 - State-aware task actions after Codex runs.
 - Prompt Builder standard for structured Codex prompts.
+- Task-specific Prompt Builder decomposition for Telegram UX/task-card requests.
 
 ## Next
 

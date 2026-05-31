@@ -179,3 +179,89 @@ def test_codex_prompt_contains_safety_out_of_scope_and_verification(tmp_path):
     assert "## Verification" in prompt
     assert "`pytest`" in prompt
     assert "`.venv/bin/python -m app.main`" in prompt
+
+
+def test_codex_prompt_for_task_card_request_has_concrete_decomposition(tmp_path):
+    orchestrator = build_orchestrator(tmp_path)
+
+    result = orchestrator.create_task(
+        "В ai-sales-assistant сделай нормальную карточку задачи: чтобы было видно название, проект, "
+        "текущий этап, что уже выполнено и какие действия доступны дальше. Технические файлы спрячь "
+        "в отдельную кнопку. В списке задач показывай только последние 10, старые вынеси в архив. "
+        "Все пользовательские тексты — на русском."
+    )
+    prompt = (tmp_path / "tasks" / result.record.task_id / "codex_prompt.md").read_text(encoding="utf-8")
+
+    for phrase in (
+        "`/task TASK-ID` показывает слишком много технической информации и artifacts.",
+        "Пользователю сложно понять текущий этап задачи.",
+        "В карточке задачи не видно прогресс: prompt, Codex, tests, review, commit.",
+        "`/tasks` и Recent tasks недостаточно понятно показывают, о чём задача.",
+        "Основной список задач может разрастаться.",
+        "Старые задачи не вынесены в архив.",
+        "Технические файлы не должны показываться по умолчанию.",
+    ):
+        assert phrase in prompt
+
+    for phrase in (
+        "Карточка задачи показывает TASK-ID, название, проект, текущий статус и текущий этап.",
+        "Карточка показывает прогресс: задача создана, prompt готов, Codex выполнен или нет",
+        "Технические artifacts скрыты за кнопкой `🛠 Технические детали`.",
+        "`/tasks` показывает максимум 10 последних задач.",
+        "Старые задачи доступны через `📦 Архив задач`.",
+        "Задачи в списке показываются с коротким названием из `input.md`.",
+        "Все пользовательские Telegram-тексты на русском.",
+        "Кнопки зависят от текущего состояния задачи.",
+    ):
+        assert phrase in prompt
+
+    for filename in (
+        "app/telegram_bot.py",
+        "app/telegram_ui.py",
+        "app/task_messages.py",
+        "app/task_store.py",
+        "app/post_run_controls.py",
+        "tests/test_telegram_ui.py",
+        "tests/test_task_messages.py",
+        "README.md",
+        "docs/CODEX_RUNNER_V0.md",
+        "DECISIONS.md",
+    ):
+        assert filename in prompt
+
+    for phrase in (
+        "Найти, где формируется `/task TASK-ID` и Task details callback.",
+        "Скрыть raw artifact list из карточки задачи.",
+        "Добавить кнопку `🛠 Технические детали` и отдельный callback для artifacts.",
+        "Обновить `/tasks` и Recent tasks: максимум 10 задач.",
+        "Добавить `📦 Архив задач` для старых задач.",
+        "Убедиться, что post-run задачи не показывают `▶️ Запустить Codex` как основное действие.",
+    ):
+        assert phrase in prompt
+
+    for phrase in (
+        "`/task TASK-ID` не показывает raw artifacts по умолчанию.",
+        "Карточка задачи содержит название, проект, статус, текущий этап и progress checklist.",
+        "Technical details callback показывает artifacts отдельно.",
+        "`/tasks` показывает максимум 10 последних задач.",
+        "Если задач больше 10, есть кнопка `📦 Архив задач`.",
+        "Task title берётся из `input.md`.",
+        "Длинный title обрезается до 60–80 символов.",
+        "Missing `input.md` даёт fallback на `TASK-ID`.",
+        "Post-run task показывает diff/tests/review/commit/discard, а не `▶️ Запустить Codex`.",
+        "Callback data не длиннее 64 символов.",
+        "Старые команды не сломаны.",
+    ):
+        assert phrase in prompt
+
+    for phrase in (
+        "Не реализовывать Railway dashboard.",
+        "Не реализовывать полноценный Reviewer Agent.",
+        "Не реализовывать Tester/QA Agent.",
+        "Не делать deploy.",
+        "Не делать commit/push.",
+        "Не менять `.env`",
+        "Не запускать Codex CLI вручную.",
+        "Unrelated refactor",
+    ):
+        assert phrase in prompt
