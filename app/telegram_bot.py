@@ -54,6 +54,7 @@ CODEX_CALLBACK_ACK = "Запускаю Codex..."
 RECENT_TASKS_QUERY_LIMIT = 11
 ARCHIVE_TASKS_LIMIT = 50
 PROJECT_TASKS_QUERY_LIMIT = 1000
+RECENT_TASK_CALLBACKS = frozenset({"tasks:recent", "tasks:list", "tasks:show"})
 
 
 def configure_safe_logging() -> None:
@@ -158,12 +159,20 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _reply_task_list(update: Update, records, use_status_message: bool = False) -> None:
-    keyboard = build_recent_tasks_keyboard(records)
-    message = build_status_message(records) if use_status_message else build_recent_tasks_message(records)
+    message, keyboard = _recent_tasks_payload(records, use_status_message=use_status_message)
     await update.message.reply_text(
         message,
         reply_markup=keyboard or build_persistent_menu_keyboard(),
     )
+
+
+def _recent_tasks_payload(records, use_status_message: bool = False):
+    message = build_status_message(records) if use_status_message else build_recent_tasks_message(records)
+    return message, build_recent_tasks_keyboard(records)
+
+
+def _archived_tasks_payload(records):
+    return build_archived_tasks_message(records), build_archived_tasks_keyboard(records)
 
 
 async def runbook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -285,19 +294,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    if data == "tasks:recent":
+    if data in RECENT_TASK_CALLBACKS:
         records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
+        message, keyboard = _recent_tasks_payload(records)
         await query.edit_message_text(
-            build_recent_tasks_message(records),
-            reply_markup=build_recent_tasks_keyboard(records),
+            message,
+            reply_markup=keyboard,
         )
         return
 
     if data == "tasks:archive":
         records = orchestrator.store.list_tasks(limit=ARCHIVE_TASKS_LIMIT, offset=10)
+        message, keyboard = _archived_tasks_payload(records)
         await query.edit_message_text(
-            build_archived_tasks_message(records),
-            reply_markup=build_archived_tasks_keyboard(records),
+            message,
+            reply_markup=keyboard,
         )
         return
 

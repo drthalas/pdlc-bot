@@ -86,6 +86,23 @@ def keyboard_text(markup) -> list[str]:
     return [button.text for row in markup.keyboard for button in row]
 
 
+def assert_readable_task_list_payload(payload, task_id: str, title: str) -> None:
+    text = payload["text"]
+    markup = payload["reply_markup"]
+
+    assert text.strip() != "Действия с задачами:"
+    assert "Действия с задачами:" not in text
+    assert f"{task_id} — pdlc-bot" in text
+    assert title in text
+    assert "Статус:" in text
+    assert markup is not None
+    labels = button_text(markup)
+    data = button_data(markup)
+    assert any(label.endswith(task_id) for label in labels)
+    assert all(title not in label for label in labels)
+    assert all(len(item.encode("utf-8")) <= 64 for item in data)
+
+
 class FakeUser:
     id = 123
 
@@ -241,12 +258,19 @@ def test_persistent_menu_keyboard_contains_navigation_buttons():
 def test_get_menu_action_recognizes_menu_buttons():
     assert get_menu_action(MENU_BUTTON) == "menu"
     assert get_menu_action(LEGACY_MENU_BUTTON) == "menu"
+    assert get_menu_action("Меню") == "menu"
     assert get_menu_action(PROJECTS_BUTTON) == "projects"
     assert get_menu_action(LEGACY_PROJECTS_BUTTON) == "projects"
+    assert get_menu_action("Projects") == "projects"
     assert get_menu_action(TASKS_BUTTON) == "tasks"
     assert get_menu_action(LEGACY_TASKS_BUTTON) == "tasks"
+    assert get_menu_action("🗂 Последние") == "tasks"
+    assert get_menu_action("🗂 Recent tasks") == "tasks"
+    assert get_menu_action("Задачи") == "tasks"
+    assert get_menu_action("Tasks") == "tasks"
     assert get_menu_action(STATUS_BUTTON) == "status"
     assert get_menu_action(LEGACY_STATUS_BUTTON) == "status"
+    assert get_menu_action("Статус") == "status"
     assert get_menu_action(RUNBOOK_BUTTON) == "runbook"
     assert get_menu_action("В pdlc-bot добавь кнопку") is None
 
@@ -338,6 +362,36 @@ def test_tasks_command_live_scenario_shows_titles_status_and_archive_button(monk
     assert "TASK-0002" not in reply["text"]
     assert "📦 Архив" in button_text(reply["reply_markup"])
     assert all("задача номер" not in text for text in button_text(reply["reply_markup"]))
+
+
+def test_live_task_list_routes_all_send_readable_text(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    records = [
+        make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot улучшить список задач"),
+        make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot добавить кнопку"),
+    ]
+
+    command_update = FakeUpdate("/tasks")
+    asyncio.run(tasks(command_update, FakeContext(RecordingOrchestrator(records=records))))
+    assert_readable_task_list_payload(command_update.message.replies[-1], "TASK-0002", "улучшить список задач")
+
+    for label in (TASKS_BUTTON, LEGACY_TASKS_BUTTON, "🗂 Последние", "🗂 Recent tasks"):
+        update = FakeUpdate(label)
+        orchestrator = RecordingOrchestrator(records=records)
+        asyncio.run(handle_text(update, FakeContext(orchestrator)))
+
+        assert orchestrator.created_texts == []
+        assert len(update.message.replies) == 1
+        assert_readable_task_list_payload(update.message.replies[-1], "TASK-0002", "улучшить список задач")
+
+    task_card_keyboard = build_task_action_keyboard(records[0])
+    assert "tasks:recent" in button_data(task_card_keyboard)
+
+    for callback_data in ("tasks:recent", "tasks:list", "tasks:show"):
+        update = FakeCallbackUpdate(callback_data)
+        asyncio.run(handle_callback(update, make_records_callback_context(records)))
+
+        assert_readable_task_list_payload(update.callback_query.edits[-1], "TASK-0002", "улучшить список задач")
 
 
 def test_main_menu_keyboard_contains_runbook_action():
@@ -671,6 +725,7 @@ def test_archive_callback_shows_older_tasks(monkeypatch, tmp_path):
     assert "⚪ TASK-0002" in button_text(markup)
     assert "task:details:TASK-0002" in button_data(markup)
     assert all("задача" not in label for label in button_text(markup))
+    assert all(len(item.encode("utf-8")) <= 64 for item in button_data(markup))
 
 
 def test_recent_tasks_callback_sends_text_list_and_short_buttons(monkeypatch, tmp_path):

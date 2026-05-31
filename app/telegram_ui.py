@@ -41,18 +41,33 @@ LONG_BUTTON_LABELS = (
 MENU_ACTIONS = {
     MENU_BUTTON: "menu",
     LEGACY_MENU_BUTTON: "menu",
+    "Меню": "menu",
+    "Menu": "menu",
     PROJECTS_BUTTON: "projects",
     LEGACY_PROJECTS_BUTTON: "projects",
+    "Проекты": "projects",
+    "Projects": "projects",
     TASKS_BUTTON: "tasks",
     LEGACY_TASKS_BUTTON: "tasks",
+    "🗂 Последние": "tasks",
+    "🗂 Последние задачи": "tasks",
+    "🗂 Recent tasks": "tasks",
+    "Задачи": "tasks",
+    "Tasks": "tasks",
+    "Последние": "tasks",
+    "Последние задачи": "tasks",
+    "Recent tasks": "tasks",
     STATUS_BUTTON: "status",
     LEGACY_STATUS_BUTTON: "status",
+    "Статус": "status",
+    "Status": "status",
     RUNBOOK_BUTTON: "runbook",
 }
 
 
 def get_menu_action(text: str) -> str | None:
-    return MENU_ACTIONS.get(text.strip())
+    normalized = " ".join(text.strip().split())
+    return MENU_ACTIONS.get(normalized)
 
 
 def build_persistent_menu_keyboard() -> ReplyKeyboardMarkup:
