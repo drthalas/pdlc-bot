@@ -119,6 +119,7 @@ def test_codex_prompt_follows_prompt_builder_structure(tmp_path):
         "## Project memory / context",
         "## Permanent project rules",
         "## Task brief",
+        "## Requirement extraction",
         "## Current behavior",
         "## Desired behavior",
         "## Suggested files to inspect",
@@ -193,6 +194,12 @@ def test_codex_prompt_for_task_card_request_has_concrete_decomposition(tmp_path)
     prompt = (tmp_path / "tasks" / result.record.task_id / "codex_prompt.md").read_text(encoding="utf-8")
 
     for phrase in (
+        "Затронутые сущности:",
+        "карточка задачи",
+        "технические artifacts",
+        "список задач",
+        "архив задач",
+        "Ожидаемый результат:",
         "`/task TASK-ID` показывает слишком много технической информации и artifacts.",
         "Пользователю сложно понять текущий этап задачи.",
         "В карточке задачи не видно прогресс: prompt, Codex, tests, review, commit.",
@@ -263,5 +270,110 @@ def test_codex_prompt_for_task_card_request_has_concrete_decomposition(tmp_path)
         "Не менять `.env`",
         "Не запускать Codex CLI вручную.",
         "Unrelated refactor",
+    ):
+        assert phrase in prompt
+
+
+def test_codex_prompt_for_project_management_ux_uses_project_specific_decomposition(tmp_path):
+    orchestrator = build_orchestrator(tmp_path)
+
+    result = orchestrator.create_task(
+        "В ai-sales-assistant улучши раздел Проекты: сделай карточки проектов с описанием, GitHub URL, "
+        "задачами проекта и кнопкой Добавить проект."
+    )
+    prompt = (tmp_path / "tasks" / result.record.task_id / "codex_prompt.md").read_text(encoding="utf-8")
+
+    for phrase in (
+        "Затронутые сущности:",
+        "раздел `/projects`",
+        "карточки проектов",
+        "GitHub URL проекта",
+        "задачи выбранного проекта",
+        "кнопка `Добавить проект`",
+        "`/projects` показывает список проектов слишком плоско",
+        "В списке проектов не видно описание, GitHub URL, runtime/local status и количество задач.",
+        "Project details не выглядят как отдельная карточка проекта",
+        "Нельзя быстро открыть задачи конкретного проекта.",
+        "Нет отдельной кнопки `Добавить проект`",
+    ):
+        assert phrase in prompt
+
+    for phrase in (
+        "`/projects` показывает проекты с описанием, GitHub URL, статусом и количеством задач.",
+        "Каждый проект кликабельный и открывает карточку проекта.",
+        "Карточка проекта показывает название, aliases, stack, GitHub URL, local path/status, описание и последние задачи этого проекта.",
+        "В карточке проекта есть кнопки `Задачи проекта`, `Назад к проектам`, `Добавить проект`.",
+        "`Добавить проект` пока работает как заглушка",
+        "Все пользовательские Telegram-тексты на русском.",
+    ):
+        assert phrase in prompt
+
+    for filename in (
+        "app/telegram_bot.py",
+        "app/telegram_ui.py",
+        "app/project_registry.py",
+        "app/task_store.py",
+        "config/projects.example.yaml",
+        "tests/test_telegram_ui.py",
+        "tests/test_project_registry.py",
+        "tests/test_task_store.py",
+        "README.md",
+    ):
+        assert filename in prompt
+
+    for phrase in (
+        "Добавить или обновить helper для списка проектов с описанием, GitHub URL, статусом и количеством задач.",
+        "Добавить user-friendly карточку проекта",
+        "Реализовать callback `Задачи проекта`, который фильтрует задачи по `project_name`.",
+        "Реализовать `Добавить проект` как безопасную заглушку без clone, git commands и изменения `config/projects.yaml`.",
+    ):
+        assert phrase in prompt
+
+    for phrase in (
+        "`/projects` показывает проекты с описанием, GitHub URL, статусом и количеством задач.",
+        "Проект кликабельный и открывает карточку проекта.",
+        "Карточка проекта показывает последние задачи только этого проекта.",
+        "Есть кнопка `Задачи проекта`.",
+        "Есть кнопка `Назад к проектам`.",
+        "Есть кнопка `Добавить проект`.",
+        "`Добавить проект` пока заглушка: ничего не клонирует и не меняет config.",
+        "callback_data для новых project buttons не длиннее 64 bytes.",
+        "Существующая команда `/projects` не сломана.",
+    ):
+        assert phrase in prompt
+
+    for phrase in (
+        "Не клонировать репозитории.",
+        "Не менять `config/projects.yaml`.",
+        "Не реализовывать полноценный onboarding нового проекта.",
+        "`Добавить проект` должен быть только безопасной заглушкой.",
+    ):
+        assert phrase in prompt
+
+    assert "`/task TASK-ID` показывает слишком много технической информации" not in prompt
+    assert "Старые задачи доступны через `📦 Архив задач`." not in prompt
+
+
+def test_codex_prompt_for_codex_runner_request_uses_runner_safety(tmp_path):
+    orchestrator = build_orchestrator(tmp_path)
+
+    result = orchestrator.create_task("В ai-sales-assistant улучши Codex Runner subprocess safety и artifacts")
+    prompt = (tmp_path / "tasks" / result.record.task_id / "codex_prompt.md").read_text(encoding="utf-8")
+
+    for filename in (
+        "app/codex_runner.py",
+        "app/post_run_controls.py",
+        "docs/CODEX_RUNNER_V0.md",
+        "tests/test_codex_runner.py",
+        "tests/test_post_run_controls.py",
+    ):
+        assert filename in prompt
+
+    for phrase in (
+        "Codex Runner",
+        "Codex CLI не запускается без explicit user action.",
+        "Runner не делает commit, push, PR или deploy.",
+        "Все новые runner results сохраняются в task artifacts.",
+        "Покрыть subprocess/git/Codex поведение mocks в тестах, не запуская реальный Codex CLI.",
     ):
         assert phrase in prompt

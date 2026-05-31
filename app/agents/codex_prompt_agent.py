@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from app.agents.intake_agent import IntakeResult
 
@@ -70,13 +71,36 @@ TASK_CARD_KEYWORDS = (
     "статус",
 )
 
+PROJECT_UX_KEYWORDS = (
+    "/projects",
+    "раздел проекты",
+    "раздел “проекты”",
+    "раздел \"проекты\"",
+    "проекты",
+    "проектов",
+    "карточк проект",
+    "project card",
+    "project cards",
+    "project details",
+    "детали проекта",
+    "задачи проекта",
+    "github url",
+    "repo url",
+    "описание",
+    "добавить проект",
+)
+
 CODEX_RUNNER_KEYWORDS = (
     "codex",
     "runner",
     "run codex",
     "subprocess",
     "branch",
-    "git",
+    "git status",
+    "git check",
+    "git branch",
+    "git checkout",
+    "git diff",
     "diff",
     "commit",
     "push",
@@ -105,6 +129,18 @@ TASK_CARD_FILES = [
     "DECISIONS.md",
 ]
 
+PROJECT_UX_FILES = [
+    "app/telegram_bot.py",
+    "app/telegram_ui.py",
+    "app/project_registry.py",
+    "app/task_store.py",
+    "config/projects.example.yaml",
+    "tests/test_telegram_ui.py",
+    "tests/test_project_registry.py",
+    "tests/test_task_store.py",
+    "README.md",
+]
+
 CODEX_RUNNER_FILES = [
     "app/codex_runner.py",
     "app/post_run_controls.py",
@@ -127,6 +163,245 @@ BASIC_FILES = [
 ]
 
 
+@dataclass(frozen=True)
+class RequirementExtraction:
+    goal: str
+    entities: list[str]
+    actions: list[str]
+    constraints: list[str]
+    expected_results: list[str]
+    current_behavior: list[str]
+    implementation_steps: list[str]
+    acceptance_criteria: list[str]
+    out_of_scope: list[str]
+    categories: list[str]
+
+
+def _add_unique(items: list[str], item: str) -> None:
+    if item not in items:
+        items.append(item)
+
+
+def _contains_any(lowered: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in lowered for keyword in keywords)
+
+
+def extract_requirements(raw_request: str) -> RequirementExtraction:
+    lowered = raw_request.lower()
+    goal = " ".join(raw_request.strip().split())
+    entities: list[str] = []
+    actions: list[str] = []
+    constraints: list[str] = []
+    expected: list[str] = []
+    current: list[str] = []
+    steps: list[str] = []
+    acceptance: list[str] = []
+    out_of_scope: list[str] = []
+    categories: list[str] = []
+
+    if _contains_any(lowered, TELEGRAM_KEYWORDS):
+        _add_unique(categories, "telegram_ux")
+        _add_unique(entities, "Telegram UX")
+        _add_unique(actions, "обновить пользовательские сообщения, кнопки или callbacks")
+        _add_unique(constraints, "Все пользовательские Telegram-тексты должны быть на русском.")
+        _add_unique(expected, "- Пользователь должен видеть понятный русский Telegram UX: релевантные кнопки, короткие сообщения, сохранение старых команд и корректные callback actions без потери контекста.")
+        _add_unique(acceptance, "Все пользовательские Telegram-тексты на русском.")
+        _add_unique(acceptance, "Пользовательские Telegram-тексты на русском там, где они видны пользователю.")
+        _add_unique(acceptance, "Нужные кнопки/пункты меню отображаются в соответствующих сообщениях.")
+        _add_unique(acceptance, "Callback data не длиннее 64 символов.")
+        _add_unique(acceptance, "callback_data для inline-кнопок не превышает 64 bytes.")
+        _add_unique(acceptance, "Старые команды не сломаны.")
+        _add_unique(acceptance, "Старые команды `/start`, `/projects`, `/status`, `/tasks`, `/task`, `/prompt` не сломаны, если затронут Telegram UX.")
+        _add_unique(acceptance, "Добавлены или обновлены focused tests для нового UX.")
+
+    if _contains_any(lowered, PROJECT_UX_KEYWORDS):
+        _add_unique(categories, "project_management_ux")
+        _add_unique(entities, "раздел `/projects`")
+        _add_unique(entities, "карточки проектов")
+        _add_unique(current, "- `/projects` показывает список проектов слишком плоско и не помогает понять, чем проект является.")
+        _add_unique(current, "- В списке проектов не видно описание, GitHub URL, runtime/local status и количество задач.")
+        _add_unique(current, "- Project details не выглядят как отдельная карточка проекта с понятными действиями.")
+        _add_unique(expected, "- `/projects` показывает проекты с описанием, GitHub URL, статусом и количеством задач.")
+        _add_unique(expected, "- Каждый проект кликабельный и открывает карточку проекта.")
+        _add_unique(expected, "- Карточка проекта показывает название, aliases, stack, GitHub URL, local path/status, описание и последние задачи этого проекта.")
+        _add_unique(expected, "- В карточке проекта есть кнопки `Задачи проекта`, `Назад к проектам`, `Добавить проект`.")
+        _add_unique(steps, "Найти handlers и callbacks для `/projects` и `project:show:*`.")
+        _add_unique(steps, "Проверить, какие поля доступны в `ProjectRegistry` и `config/projects.example.yaml`.")
+        _add_unique(steps, "Добавить или обновить helper для списка проектов с описанием, GitHub URL, статусом и количеством задач.")
+        _add_unique(steps, "Добавить user-friendly карточку проекта с aliases, stack, repo URL, local path/status и последними задачами проекта.")
+        _add_unique(acceptance, "`/projects` показывает проекты с описанием, GitHub URL, статусом и количеством задач.")
+        _add_unique(acceptance, "Проект кликабельный и открывает карточку проекта.")
+        _add_unique(acceptance, "Есть кнопка `Назад к проектам`.")
+        _add_unique(acceptance, "callback_data для новых project buttons не длиннее 64 bytes.")
+        _add_unique(acceptance, "Существующая команда `/projects` не сломана.")
+
+    if "описан" in lowered:
+        _add_unique(entities, "описание проекта")
+        _add_unique(expected, "- Карточка проекта показывает описание проекта.")
+        _add_unique(acceptance, "Карточка проекта показывает описание проекта.")
+
+    if "github url" in lowered or "repo url" in lowered or "github" in lowered:
+        _add_unique(entities, "GitHub URL проекта")
+        _add_unique(expected, "- Карточка проекта показывает GitHub URL.")
+        _add_unique(acceptance, "Карточка проекта показывает GitHub URL.")
+
+    if "задачи проекта" in lowered or "задачами проекта" in lowered:
+        _add_unique(entities, "задачи выбранного проекта")
+        _add_unique(actions, "показать задачи конкретного проекта")
+        _add_unique(current, "- Нельзя быстро открыть задачи конкретного проекта.")
+        _add_unique(expected, "- `Задачи проекта` показывает только задачи выбранного проекта.")
+        _add_unique(steps, "Реализовать callback `Задачи проекта`, который фильтрует задачи по `project_name`.")
+        _add_unique(acceptance, "Карточка проекта показывает последние задачи только этого проекта.")
+        _add_unique(acceptance, "Есть кнопка `Задачи проекта`.")
+
+    if "добавить проект" in lowered:
+        _add_unique(entities, "кнопка `Добавить проект`")
+        _add_unique(actions, "добавить безопасную заглушку добавления проекта")
+        _add_unique(current, "- Нет отдельной кнопки `Добавить проект` даже как безопасной заглушки.")
+        _add_unique(expected, "- `Добавить проект` пока работает как заглушка: объясняет будущий flow, ничего не клонирует и не меняет config.")
+        _add_unique(steps, "Реализовать `Добавить проект` как безопасную заглушку без clone, git commands и изменения `config/projects.yaml`.")
+        _add_unique(acceptance, "Есть кнопка `Добавить проект`.")
+        _add_unique(acceptance, "`Добавить проект` пока заглушка: ничего не клонирует и не меняет config.")
+        _add_unique(constraints, "Не клонировать репозитории и не менять `config/projects.yaml` для заглушки добавления проекта.")
+        _add_unique(out_of_scope, "Не клонировать репозитории.")
+        _add_unique(out_of_scope, "Не менять `config/projects.yaml`.")
+        _add_unique(out_of_scope, "Не реализовывать полноценный onboarding нового проекта.")
+        _add_unique(out_of_scope, "`Добавить проект` должен быть только безопасной заглушкой.")
+
+    is_project_card_request = "карточк проект" in lowered or "карточки проектов" in lowered
+    if "карточк" in lowered and "задач" in lowered and not is_project_card_request:
+        _add_unique(categories, "task_card_ux")
+        _add_unique(entities, "карточка задачи")
+        _add_unique(current, "- `/task TASK-ID` показывает слишком много технической информации и artifacts.")
+        _add_unique(current, "- Пользователю сложно понять текущий этап задачи.")
+        _add_unique(current, "- В карточке задачи не видно прогресс: prompt, Codex, tests, review, commit.")
+        _add_unique(expected, "- Карточка задачи показывает TASK-ID, название, проект, текущий статус и текущий этап.")
+        _add_unique(expected, "- Карточка показывает прогресс: задача создана, prompt готов, Codex выполнен или нет, тесты пройдены или нет, review ожидается или выполнен, commit сделан или нет.")
+        _add_unique(expected, "- Кнопки зависят от текущего состояния задачи.")
+        _add_unique(steps, "Найти, где формируется `/task TASK-ID` и Task details callback.")
+        _add_unique(steps, "Вынести или обновить helper для user-friendly task card.")
+        _add_unique(steps, "Добавить определение display state задачи по status и artifacts.")
+        _add_unique(steps, "Убедиться, что post-run задачи не показывают `▶️ Запустить Codex` как основное действие.")
+        _add_unique(acceptance, "`/task TASK-ID` не показывает raw artifacts по умолчанию.")
+        _add_unique(acceptance, "Карточка задачи содержит название, проект, статус, текущий этап и progress checklist.")
+        _add_unique(acceptance, "Post-run task показывает diff/tests/review/commit/discard, а не `▶️ Запустить Codex`.")
+
+    if "технические файлы" in lowered or "технические детали" in lowered or "artifacts" in lowered:
+        _add_unique(entities, "технические artifacts")
+        _add_unique(actions, "скрыть технические файлы из основного пользовательского экрана")
+        _add_unique(current, "- Технические файлы не должны показываться по умолчанию.")
+        _add_unique(expected, "- Технические artifacts скрыты за кнопкой `🛠 Технические детали`.")
+        _add_unique(steps, "Скрыть raw artifact list из карточки задачи.")
+        _add_unique(steps, "Добавить кнопку `🛠 Технические детали` и отдельный callback для artifacts.")
+        _add_unique(acceptance, "Есть кнопка `🛠 Технические детали`.")
+        _add_unique(acceptance, "Technical details callback показывает artifacts отдельно.")
+
+    if "список задач" in lowered or "/tasks" in lowered or "последние 10" in lowered:
+        _add_unique(entities, "список задач")
+        _add_unique(current, "- `/tasks` и Recent tasks недостаточно понятно показывают, о чём задача.")
+        _add_unique(expected, "- `/tasks` показывает максимум 10 последних задач.")
+        _add_unique(expected, "- Задачи в списке показываются с коротким названием из `input.md`.")
+        _add_unique(steps, "Обновить `/tasks` и Recent tasks: максимум 10 задач.")
+        _add_unique(steps, "Добавить или переиспользовать task title extraction из `input.md`.")
+        _add_unique(acceptance, "`/tasks` показывает максимум 10 последних задач.")
+        _add_unique(acceptance, "Task title берётся из `input.md`.")
+        _add_unique(acceptance, "Длинный title обрезается до 60–80 символов.")
+        _add_unique(acceptance, "Missing `input.md` даёт fallback на `TASK-ID`.")
+
+    if "архив" in lowered or "старые" in lowered:
+        _add_unique(entities, "архив задач")
+        _add_unique(current, "- Основной список задач может разрастаться.")
+        _add_unique(current, "- Старые задачи не вынесены в архив.")
+        _add_unique(expected, "- Старые задачи доступны через `📦 Архив задач`.")
+        _add_unique(steps, "Добавить `📦 Архив задач` для старых задач.")
+        _add_unique(acceptance, "Если задач больше 10, есть кнопка `📦 Архив задач`.")
+        _add_unique(acceptance, "Архив показывает более старые задачи.")
+
+    if _contains_any(lowered, CODEX_RUNNER_KEYWORDS):
+        _add_unique(categories, "codex_runner")
+        _add_unique(entities, "Codex Runner")
+        _add_unique(actions, "изменить runner flow с сохранением safety guarantees")
+        _add_unique(current, "- Codex Runner требует строгих safety checks для git, subprocess, commit, push и deploy.")
+        _add_unique(expected, "- Runner выполняет только явно разрешённый безопасный шаг и сохраняет artifacts.")
+        _add_unique(steps, "Прочитать Codex Runner spec, текущую runner implementation и post-run controls.")
+        _add_unique(steps, "Покрыть subprocess/git/Codex поведение mocks в тестах, не запуская реальный Codex CLI.")
+        _add_unique(acceptance, "Codex CLI не запускается без explicit user action.")
+        _add_unique(acceptance, "Runner не делает commit, push, PR или deploy.")
+        _add_unique(acceptance, "Все новые runner results сохраняются в task artifacts.")
+
+    if _contains_any(lowered, MAC_MINI_KEYWORDS):
+        _add_unique(categories, "mac_mini")
+        _add_unique(entities, "Mac mini runtime")
+        _add_unique(actions, "обновить deployment/runbook/runtime UX")
+        _add_unique(current, "- Mac mini runtime требует аккуратных инструкций без раскрытия token или полного `.env`.")
+        _add_unique(expected, "- Runbook/deployment flow понятен и применим к Mac mini runtime без публикации секретов.")
+        _add_unique(acceptance, "Инструкции не выводят Telegram token, полный `.env` или приватные локальные значения.")
+
+    if "кноп" in lowered or "button" in lowered:
+        _add_unique(entities, "кнопки")
+        _add_unique(actions, "добавить или обновить кнопки")
+        _add_unique(acceptance, "Нужные кнопки отображаются в соответствующих сообщениях.")
+
+    if "русск" in lowered or "на русском" in lowered:
+        _add_unique(constraints, "Все пользовательские тексты должны быть на русском.")
+
+    if not entities:
+        entities.extend(["целевой пользовательский сценарий", "существующие project patterns"])
+    if not actions:
+        actions.append("внести минимальное изменение, которое прямо закрывает запрос")
+    if not current:
+        current.append("- Текущее поведение нужно уточнить по коду и документации перед изменениями.")
+    if not expected:
+        expected.append("- Поведение после изменения прямо закрывает пользовательский запрос без расширения scope.")
+    if not steps:
+        steps.extend(
+            [
+                "Прочитать project memory files и suggested files.",
+                "Найти existing patterns для похожего поведения.",
+                "Сформулировать минимальное изменение, которое прямо закрывает запрос.",
+                "Внести scoped code/docs/tests changes без unrelated refactor.",
+                "Добавить focused tests на новое поведение или regression risk.",
+            ]
+        )
+    if not acceptance:
+        acceptance.extend(
+            [
+                "Изменение реализует смысл пользовательского запроса.",
+                "Scope минимальный, unrelated files не тронуты.",
+                "Добавлены или обновлены релевантные тесты.",
+            ]
+        )
+
+    constraints.extend(
+        [
+            "Не делать commit/push/deploy без explicit approval.",
+            "Не менять `.env` и не выводить secrets/token.",
+            "Не трогать unrelated files.",
+        ]
+    )
+    out_of_scope.extend(
+        [
+            "Не делать commit/push.",
+            "Не делать deploy.",
+            "Изменения в `.env`, local runtime config и secrets.",
+            "Unrelated refactor или переписывание архитектуры целиком.",
+        ]
+    )
+
+    return RequirementExtraction(
+        goal=goal,
+        entities=entities,
+        actions=actions,
+        constraints=constraints,
+        expected_results=expected,
+        current_behavior=current,
+        implementation_steps=steps,
+        acceptance_criteria=acceptance,
+        out_of_scope=out_of_scope,
+        categories=categories,
+    )
+
+
 def context_files_for_request(raw_request: str) -> list[str]:
     lowered = raw_request.lower()
     files = list(BASE_CONTEXT_FILES)
@@ -142,203 +417,62 @@ def _matches(raw_request: str, keywords: tuple[str, ...]) -> bool:
 
 
 def task_focus(raw_request: str) -> str:
-    if _matches(raw_request, TASK_CARD_KEYWORDS):
-        return "task_card_ux"
-    if _matches(raw_request, CODEX_RUNNER_KEYWORDS):
-        return "codex_runner"
-    if _matches(raw_request, MAC_MINI_KEYWORDS):
-        return "mac_mini"
-    if _matches(raw_request, TELEGRAM_KEYWORDS):
-        return "telegram_ux"
+    extraction = extract_requirements(raw_request)
+    if extraction.categories:
+        return extraction.categories[0]
     return "general"
 
 
 def suggested_files_for_request(raw_request: str) -> list[str]:
-    focus = task_focus(raw_request)
-    if focus == "task_card_ux":
-        return TASK_CARD_FILES
-    if focus == "telegram_ux":
-        return TELEGRAM_FILES
-    if focus == "codex_runner":
-        return CODEX_RUNNER_FILES
-    if focus == "mac_mini":
-        return MAC_MINI_FILES
-    return BASIC_FILES
+    extraction = extract_requirements(raw_request)
+    files: list[str] = []
+    category_files = {
+        "telegram_ux": TELEGRAM_FILES,
+        "task_card_ux": TASK_CARD_FILES,
+        "project_management_ux": PROJECT_UX_FILES,
+        "codex_runner": CODEX_RUNNER_FILES,
+        "mac_mini": MAC_MINI_FILES,
+    }
+    for category in extraction.categories:
+        for file in category_files.get(category, []):
+            _add_unique(files, file)
+    if not files:
+        files.extend(BASIC_FILES)
+    return files
 
 
 def task_brief(raw_request: str) -> str:
+    extraction = extract_requirements(raw_request)
     return (
-        "Разобрать короткую задачу пользователя, уточнить её по коду проекта и внести минимальное "
-        f"изменение без расширения scope: {raw_request}"
+        "Разобрать короткую задачу пользователя через Analyst Skill и внести минимальное изменение "
+        f"без расширения scope: {extraction.goal}"
     )
 
 
 def current_behavior_for_request(raw_request: str) -> str:
-    focus = task_focus(raw_request)
-    if focus == "task_card_ux":
-        return "\n".join(
-            [
-                "- `/task TASK-ID` показывает слишком много технической информации и artifacts.",
-                "- Пользователю сложно понять текущий этап задачи.",
-                "- В карточке задачи не видно прогресс: prompt, Codex, tests, review, commit.",
-                "- `/tasks` и Recent tasks недостаточно понятно показывают, о чём задача.",
-                "- Основной список задач может разрастаться.",
-                "- Старые задачи не вынесены в архив.",
-                "- Технические файлы не должны показываться по умолчанию.",
-            ]
-        )
-    if focus == "telegram_ux":
-        return (
-            "Telegram UX сейчас недостаточно точно отражает ожидаемый сценарий пользователя: "
-            "сообщения, кнопки или списки задач могут быть непонятными, слишком общими или не сохранять нужный state."
-        )
-    if focus == "codex_runner":
-        return (
-            "Codex Runner развивается поэтапно: важно не ослабить safety-гарантии, не запустить Codex без explicit action "
-            "и не добавить commit/push/deploy поведение без отдельного approval."
-        )
-    if focus == "mac_mini":
-        return (
-            "Mac mini является runtime-средой через launchd; документация и deployment UX должны помогать проверять service, "
-            "логи и deployed version без раскрытия token или локальных секретов."
-        )
-    return "Текущее поведение нужно проверить по коду и документации, потому что запрос пользователя короткий и требует аккуратного уточнения через existing patterns."
+    return "\n".join(extract_requirements(raw_request).current_behavior)
 
 
 def desired_behavior_for_request(raw_request: str) -> str:
-    focus = task_focus(raw_request)
-    if focus == "task_card_ux":
-        return "\n".join(
-            [
-                "- Карточка задачи показывает TASK-ID, название, проект, текущий статус и текущий этап.",
-                "- Карточка показывает прогресс: задача создана, prompt готов, Codex выполнен или нет, тесты пройдены или нет, review ожидается или выполнен, commit сделан или нет.",
-                "- Технические artifacts скрыты за кнопкой `🛠 Технические детали`.",
-                "- `/tasks` показывает максимум 10 последних задач.",
-                "- Старые задачи доступны через `📦 Архив задач`.",
-                "- Задачи в списке показываются с коротким названием из `input.md`.",
-                "- Все пользовательские Telegram-тексты на русском.",
-                "- Кнопки зависят от текущего состояния задачи.",
-            ]
-        )
-    if focus == "telegram_ux":
-        return (
-            "Пользователь должен видеть понятный русский Telegram UX: релевантные кнопки, короткие сообщения, сохранение старых команд "
-            "и корректные callback actions без потери контекста."
-        )
-    if focus == "codex_runner":
-        return (
-            "Runner должен выполнять только явно разрешённый безопасный шаг, сохранять artifacts, ясно сообщать результат в Telegram "
-            "и не делать commit/push/deploy."
-        )
-    if focus == "mac_mini":
-        return (
-            "Runbook/deployment flow должен быть понятным, безопасным и применимым к Mac mini runtime без публикации token или полного .env."
-        )
-    return "После изменения поведение должно прямо закрывать пользовательский запрос, оставаться маленьким по scope и иметь проверяемые тесты."
+    return "\n".join(extract_requirements(raw_request).expected_results)
 
 
 def implementation_plan_for_request(raw_request: str) -> list[str]:
-    focus = task_focus(raw_request)
-    if focus == "task_card_ux":
-        return [
-            "Найти, где формируется `/task TASK-ID` и Task details callback.",
-            "Вынести или обновить helper для user-friendly task card.",
-            "Добавить определение display state задачи по status и artifacts.",
-            "Скрыть raw artifact list из карточки задачи.",
-            "Добавить кнопку `🛠 Технические детали` и отдельный callback для artifacts.",
-            "Обновить `/tasks` и Recent tasks: максимум 10 задач.",
-            "Добавить `📦 Архив задач` для старых задач.",
-            "Добавить или переиспользовать task title extraction из `input.md`.",
-            "Убедиться, что post-run задачи не показывают `▶️ Запустить Codex` как основное действие.",
-            "Обновить тесты и документацию.",
-        ]
-    if focus == "telegram_ux":
-        return [
-            "Прочитать Telegram handlers и UI helper functions, чтобы понять текущий routing команд, callbacks и keyboards.",
-            "Найти место, где формируется нужный текст, список, кнопка или task details.",
-            "Сделать пользовательские Telegram-тексты на русском, оставив callback_data/internal identifiers на английском.",
-            "Сохранить совместимость старых slash-команд и existing inline/persistent keyboards.",
-            "Проверить, что callback_data остаётся не длиннее 64 bytes.",
-            "Добавить или обновить focused tests для affected Telegram UI/helper behavior.",
-            "Запустить `.venv/bin/pytest` и `.venv/bin/python -m app.main`.",
-        ]
-    if focus == "codex_runner":
-        return [
-            "Прочитать Codex Runner spec, текущую runner implementation и post-run controls.",
-            "Определить самый маленький безопасный runner step для запроса.",
-            "Убедиться, что Codex не запускается автоматически и все опасные действия требуют explicit approval.",
-            "Если нужны subprocess calls, разрешить только конкретные команды с `shell=False` и timeout.",
-            "Сохранять все новые результаты в task artifacts с понятными именами.",
-            "Покрыть subprocess/git/Codex поведение mocks в тестах, не запуская реальный Codex CLI.",
-            "Запустить `.venv/bin/pytest` и `.venv/bin/python -m app.main`.",
-        ]
-    if focus == "mac_mini":
-        return [
-            "Прочитать Mac mini runbook, README и roadmap, чтобы не расходиться с runtime model.",
-            "Проверить, что инструкции используют Mac mini как execution runtime и не раскрывают token/.env.",
-            "Обновить только релевантные operational docs или UI text.",
-            "Не менять launchd/service behavior без отдельного explicit request.",
-            "Добавить/обновить tests, если меняется bot behavior или generated artifacts.",
-            "Запустить `.venv/bin/pytest` и `.venv/bin/python -m app.main`.",
-        ]
-    return [
-        "Прочитать project memory files и suggested files.",
-        "Найти existing patterns для похожего поведения.",
-        "Сформулировать минимальное изменение, которое прямо закрывает запрос.",
-        "Внести scoped code/docs/tests changes без unrelated refactor.",
-        "Добавить focused tests на новое поведение или regression risk.",
+    steps = list(extract_requirements(raw_request).implementation_steps)
+    for common_step in (
+        "Сохранить совместимость существующих команд и callbacks, если они затронуты.",
+        "Добавить или обновить focused tests для нового поведения.",
         "Запустить `.venv/bin/pytest` и `.venv/bin/python -m app.main`.",
-    ]
+    ):
+        _add_unique(steps, common_step)
+    return steps
 
 
 def acceptance_criteria_for_request(raw_request: str) -> list[str]:
-    focus = task_focus(raw_request)
-    if focus == "task_card_ux":
-        return [
-            "`/task TASK-ID` не показывает raw artifacts по умолчанию.",
-            "Карточка задачи содержит название, проект, статус, текущий этап и progress checklist.",
-            "Есть кнопка `🛠 Технические детали`.",
-            "Technical details callback показывает artifacts отдельно.",
-            "`/tasks` показывает максимум 10 последних задач.",
-            "Если задач больше 10, есть кнопка `📦 Архив задач`.",
-            "Архив показывает более старые задачи.",
-            "Task title берётся из `input.md`.",
-            "Длинный title обрезается до 60–80 символов.",
-            "Missing `input.md` даёт fallback на `TASK-ID`.",
-            "Post-run task показывает diff/tests/review/commit/discard, а не `▶️ Запустить Codex`.",
-            "Все пользовательские Telegram-тексты на русском.",
-            "Callback data не длиннее 64 символов.",
-            "Старые команды не сломаны.",
-        ]
-    if focus == "telegram_ux":
-        return [
-            "Пользовательские Telegram-тексты на русском там, где они видны пользователю.",
-            "Нужные кнопки/пункты меню отображаются в соответствующих сообщениях.",
-            "callback_data для inline-кнопок не превышает 64 bytes.",
-            "Старые команды `/start`, `/projects`, `/status`, `/tasks`, `/task`, `/prompt` не сломаны, если затронут Telegram UX.",
-            "Добавлены или обновлены focused tests для нового UX.",
-        ]
-    if focus == "codex_runner":
-        return [
-            "Codex CLI не запускается без explicit user action.",
-            "Runner не делает commit, push, PR или deploy.",
-            "Все новые runner results сохраняются в task artifacts.",
-            "Subprocess/git behavior покрыт tests через mocks, без запуска реального Codex CLI.",
-            "Safety checks для dirty tree, approvals и protected files сохранены или усилены.",
-        ]
-    if focus == "mac_mini":
-        return [
-            "Инструкции не выводят Telegram token, полный `.env` или приватные локальные значения.",
-            "Mac mini описан как execution runtime, а MacBook как development machine.",
-            "launchd/service/log commands понятны и не требуют sudo, если это не оговорено отдельно.",
-            "Документация явно не запускает Codex CLI/GitHub automation без отдельного approval.",
-        ]
-    return [
-        "Изменение реализует смысл пользовательского запроса.",
-        "Scope минимальный, unrelated files не тронуты.",
-        "Добавлены или обновлены релевантные тесты.",
-        "Все проверки проходят.",
-    ]
+    criteria = list(extract_requirements(raw_request).acceptance_criteria)
+    _add_unique(criteria, "Scope минимальный, unrelated files не тронуты.")
+    _add_unique(criteria, "Все проверки проходят.")
+    return criteria
 
 
 def safety_constraints_for_request(raw_request: str) -> list[str]:
@@ -353,27 +487,42 @@ def safety_constraints_for_request(raw_request: str) -> list[str]:
 
 
 def out_of_scope_for_request(raw_request: str) -> list[str]:
-    focus = task_focus(raw_request)
-    items = [
-        "Не делать commit/push.",
-        "Не делать deploy.",
-        "Изменения в `.env`, local runtime config и secrets.",
-        "Unrelated refactor или переписывание архитектуры целиком.",
-    ]
-    if focus == "task_card_ux":
-        items.extend(
-            [
-                "Не реализовывать Railway dashboard.",
-                "Не реализовывать полноценный Reviewer Agent.",
-                "Не реализовывать Tester/QA Agent.",
-                "Не запускать Codex CLI вручную.",
-            ]
-        )
-    if focus != "codex_runner":
+    extraction = extract_requirements(raw_request)
+    items = list(extraction.out_of_scope)
+    if "task_card_ux" in extraction.categories:
+        for item in (
+            "Не реализовывать Railway dashboard.",
+            "Не реализовывать полноценный Reviewer Agent.",
+            "Не реализовывать Tester/QA Agent.",
+            "Не запускать Codex CLI вручную.",
+        ):
+            _add_unique(items, item)
+    if "codex_runner" not in extraction.categories:
         items.append("Изменения Codex Runner execution flow, если задача не про Runner.")
-    if focus != "mac_mini":
+    if "mac_mini" not in extraction.categories:
         items.append("Mac mini deployment/launchd changes, если задача не про deployment.")
     return items
+
+
+def requirement_extraction_section(raw_request: str) -> str:
+    extraction = extract_requirements(raw_request)
+    return "\n".join(
+        [
+            f"Цель: {extraction.goal}",
+            "",
+            "Затронутые сущности:",
+            _bullet_list(extraction.entities),
+            "",
+            "Действия пользователя / системы:",
+            _bullet_list(extraction.actions),
+            "",
+            "Ограничения из запроса и project rules:",
+            _bullet_list(extraction.constraints),
+            "",
+            "Ожидаемый результат:",
+            _bullet_list(extraction.expected_results),
+        ]
+    )
 
 
 def verification_commands(intake: IntakeResult) -> list[str]:
@@ -400,6 +549,7 @@ class CodexPromptAgent:
         repo_url = project.repo_url if project else "UNKNOWN_REPO_URL"
         context_files = _bullet_list(context_files_for_request(intake.raw_request))
         project_rules = _bullet_list(PROJECT_RULES)
+        requirement_extraction = requirement_extraction_section(intake.raw_request)
         suggested_files = _bullet_list(suggested_files_for_request(intake.raw_request))
         implementation_plan = _numbered_list(implementation_plan_for_request(intake.raw_request))
         acceptance_criteria = _bullet_list(acceptance_criteria_for_request(intake.raw_request))
@@ -432,6 +582,10 @@ class CodexPromptAgent:
 ## Task brief
 
 {task_brief(intake.raw_request)}
+
+## Requirement extraction
+
+{requirement_extraction}
 
 ## Current behavior
 

@@ -16,6 +16,7 @@
 - State-aware task actions after Codex runs.
 - Prompt Builder standard for structured Codex prompts.
 - Task-specific Prompt Builder decomposition for Telegram UX/task-card requests.
+- Generic Analyst Skill + Prompt Builder Skill for requirement extraction before prompt assembly.
 
 ## Next
 

@@ -34,24 +34,46 @@ Every generated `codex_prompt.md` should follow this structure:
    - keep scope minimal and do not touch unrelated files
 6. `Task brief`
    - a short task-specific summary
-7. `Current behavior`
+7. `Requirement extraction`
+   - goal
+   - affected entities
+   - actions
+   - constraints
+   - expected result
+8. `Current behavior`
    - what is currently wrong, weak, or inconvenient
-8. `Desired behavior`
+9. `Desired behavior`
    - what should be true after the change
-9. `Suggested files to inspect`
+10. `Suggested files to inspect`
    - concrete files selected for the task topic
-10. `Implementation plan`
+11. `Implementation plan`
    - 5-10 concrete steps for this task
-11. `Acceptance criteria`
+12. `Acceptance criteria`
    - specific, testable checks
-12. `Safety constraints`
+13. `Safety constraints`
    - what must not be done
-13. `Out of scope`
+14. `Out of scope`
    - what should explicitly not be implemented now
-14. `Verification`
+15. `Verification`
    - concrete commands to run
-15. `Report format`
+16. `Report format`
    - what Codex should report back
+
+## Generic Task Decomposition
+
+Prompt Builder must first build requirement extraction, then assemble the prompt. It should not select a rigid task template first.
+
+Requirement extraction includes:
+
+- goal
+- affected entities
+- user/system actions
+- constraints
+- expected result
+
+Category hints such as Telegram UX, Codex Runner, Project management, Mac mini/deployment, and docs may add relevant files and safety checks. They must not override the extracted entities. If a request mentions "задачи проекта", the entity is project tasks, not automatically task cards or task archive.
+
+The detailed method is documented in [docs/skills/analyst/SKILL.md](skills/analyst/SKILL.md), and prompt assembly is documented in [docs/skills/prompt_builder/SKILL.md](skills/prompt_builder/SKILL.md).
 
 ## Topic-Specific File Selection
 
@@ -64,6 +86,18 @@ For Telegram UX tasks, include files such as:
 - `app/post_run_controls.py`
 - `tests/test_telegram_ui.py`
 - `tests/test_task_messages.py`
+
+For project management UX tasks, include files such as:
+
+- `app/telegram_bot.py`
+- `app/telegram_ui.py`
+- `app/project_registry.py`
+- `app/task_store.py`
+- `config/projects.example.yaml`
+- `tests/test_telegram_ui.py`
+- `tests/test_project_registry.py`
+- `tests/test_task_store.py`
+- `README.md`
 
 For Codex Runner tasks, include files such as:
 
@@ -172,6 +206,41 @@ Expected acceptance criteria should be specific:
 - all user-facing Telegram text is Russian
 - callback data stays within 64 bytes
 - old slash commands still work
+
+### Example: Project Management UX
+
+User request:
+
+```text
+В pdlc-bot улучши раздел Проекты: сделай карточки проектов с описанием, GitHub URL, задачами проекта и кнопкой Добавить проект.
+```
+
+This should not be treated as task-card/archive UX just because the request mentions project tasks. It should use `project_management_ux` decomposition.
+
+Expected `Current behavior` should mention:
+
+- `/projects` is too flat
+- project list lacks description, GitHub URL, status, and task counts
+- project details are not a rich project card
+- there is no quick way to open tasks for a specific project
+- there is no `Добавить проект` action even as a safe stub
+
+Expected `Desired behavior` should mention:
+
+- `/projects` shows project description, GitHub URL, status, and task count
+- projects are clickable
+- project card shows aliases, stack, GitHub URL, local path/status, and recent tasks for that project
+- buttons include `Задачи проекта`, `Назад к проектам`, and `Добавить проект`
+- `Добавить проект` is a stub and does not clone repositories or change config
+- all user-facing Telegram text is Russian
+
+Expected acceptance criteria should include:
+
+- `/projects` shows projects with description, GitHub URL, status, and task count
+- project card shows only tasks for that project
+- `Добавить проект` does not clone and does not modify `config/projects.yaml`
+- callback data stays within 64 bytes
+- existing `/projects` behavior remains compatible
 
 ## Acceptance Criteria Guidance
 

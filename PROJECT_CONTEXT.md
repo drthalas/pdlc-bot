@@ -9,7 +9,8 @@
 - `ProjectRegistry` loads configured projects and aliases from `config/projects.yaml`.
 - `TaskStore` persists task metadata in SQLite.
 - `TaskWorkspace` writes local task artifacts under `tasks/TASK-XXXX`.
-- Prompt Builder expands short Telegram requests into structured Codex prompts with project memory, task-specific plans, acceptance criteria, safety constraints, and verification commands.
+- Analyst Skill extracts goal, entities, actions, constraints, expected results, and out-of-scope boundaries from short Telegram requests.
+- Prompt Builder uses that extraction to create structured Codex prompts with project memory, task-specific plans, acceptance criteria, safety constraints, and verification commands.
 - Codex Runner is gated by feature flags and safe modes. It can prepare artifacts, check git state, create task branches, and run Codex CLI only through explicit user action. It still does not commit, push, create PRs, or deploy without approval.
 
 ## Runtime Split
