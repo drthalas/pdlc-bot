@@ -29,6 +29,11 @@ STATUS_LABELS = {
     "cancelled": "отменена",
 }
 
+COMPLETED_STATUSES = frozenset({"accepted", "completed", "done", "finished", "committed"})
+RUNNING_STATUSES = frozenset({"codex_running", "coding", "testing"})
+ERROR_STATUSES = frozenset({"failed", "error"})
+NEW_STATUSES = frozenset({"created", "prompt_ready"})
+
 
 @dataclass(frozen=True)
 class PromptResponse:
@@ -124,6 +129,21 @@ def _status_label(status: str) -> str:
     return STATUS_LABELS.get(status, status)
 
 
+def task_status_display(record: TaskRecord) -> tuple[str, str]:
+    state = task_result_state(record)
+    if record.status in ERROR_STATUSES:
+        return "🔴", "ошибка"
+    if state == TASK_RESULT_RUNNING or record.status in RUNNING_STATUSES:
+        return "⏳", "выполняется"
+    if state == TASK_RESULT_COMMITTED or record.status in COMPLETED_STATUSES:
+        return "✅", "завершено"
+    if state == TASK_RESULT_READY_FOR_POST_RUN_ACTIONS or _codex_done(record):
+        return "🟡", "в работе"
+    if record.status in NEW_STATUSES:
+        return "⚪", _status_label(record.status)
+    return "🟡", _status_label(record.status)
+
+
 def format_task_created_response(
     record: TaskRecord,
     project_detected: bool,
@@ -142,12 +162,13 @@ def format_task_created_response(
 
 def format_task_details_response(record: TaskRecord, artifacts: list[str], header: str | None = None) -> str:
     project_name = record.project_name or "не определён"
+    status_emoji, status_label = task_status_display(record)
     lines = [
         header or f"📄 Задача {record.task_id}",
         "",
         f"Название: {task_title(record)}",
         f"Проект: {project_name}",
-        f"Статус: {_status_label(record.status)}",
+        f"Статус: {status_emoji} {status_label}",
         f"Текущий этап: {_task_stage(record)}",
         "",
         "Прогресс:",

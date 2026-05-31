@@ -12,7 +12,7 @@ from app.post_run_controls import (
 )
 from app.project_registry import Project
 from app.task_store import TaskRecord
-from app.task_messages import task_title
+from app.task_messages import task_status_display, task_title
 
 
 MENU_BUTTON = "🏠 Меню"
@@ -100,7 +100,10 @@ def build_prompt_ready_task_keyboard(task_id: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("🧠 Codex prompt", callback_data=f"task:prompt:{task_id}"),
             ],
             [InlineKeyboardButton("🛠 Технические детали", callback_data=f"task:artifacts:{task_id}")],
-            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
+            [
+                InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent"),
+                InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
+            ],
         ]
     )
 
@@ -132,7 +135,10 @@ def build_codex_post_run_keyboard(task_id: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("🧹 Откатить изменения", callback_data=f"task:discard:{task_id}"),
             ],
             [InlineKeyboardButton("🛠 Технические детали", callback_data=f"task:artifacts:{task_id}")],
-            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
+            [
+                InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent"),
+                InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
+            ],
         ]
     )
 
@@ -142,7 +148,10 @@ def build_committed_task_keyboard(task_id: str) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("📤 Отправить branch", callback_data=f"task:push:{task_id}")],
             [InlineKeyboardButton("🛠 Технические детали", callback_data=f"task:artifacts:{task_id}")],
-            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
+            [
+                InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent"),
+                InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
+            ],
         ]
     )
 
@@ -152,7 +161,10 @@ def build_running_task_keyboard(task_id: str) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("⏳ Выполняется", callback_data=f"task:details:{task_id}")],
             [InlineKeyboardButton("🛠 Технические детали", callback_data=f"task:artifacts:{task_id}")],
-            [InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")],
+            [
+                InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent"),
+                InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
+            ],
         ]
     )
 
@@ -212,6 +224,18 @@ def build_discard_confirm_keyboard(task_id: str) -> InlineKeyboardMarkup:
     )
 
 
+def build_task_subview_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("⬅️ Назад", callback_data=f"task:details:{task_id}")],
+            [
+                InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent"),
+                InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
+            ],
+        ]
+    )
+
+
 def _visible_recent_tasks(tasks: list[TaskRecord]) -> list[TaskRecord]:
     return tasks[:RECENT_TASKS_LIMIT]
 
@@ -224,12 +248,23 @@ def build_recent_tasks_message(tasks: list[TaskRecord]) -> str:
     if not tasks:
         return "Задачи ещё не созданы."
 
-    lines = ["Последние задачи:", ""]
+    lines = ["🗂 Последние задачи:", ""]
     for task in _visible_recent_tasks(tasks):
+        status_emoji, status_label = task_status_display(task)
         project_name = task.project_name or "не определён"
-        lines.append(f"{task.task_id} — {project_name} — {task_title(task)}")
+        lines.extend(
+            [
+                f"{status_emoji} {task.task_id}",
+                f"Проект: {project_name}",
+                f"Название: {task_title(task)}",
+                f"Статус: {status_label}",
+                "",
+            ]
+        )
     if _has_archive(tasks):
-        lines.extend(["", "Более старые задачи доступны в архиве."])
+        lines.append("Более старые задачи доступны в архиве.")
+    else:
+        lines.pop()
     return "\n".join(lines)
 
 
@@ -237,13 +272,14 @@ def build_recent_tasks_keyboard(tasks: list[TaskRecord], include_archive: bool |
     if not tasks:
         return None
     rows = [
-        [InlineKeyboardButton(f"{task.task_id} — {task_title(task, limit=48)}", callback_data=f"task:details:{task.task_id}")]
+        [InlineKeyboardButton(f"{task_status_display(task)[0]} {task.task_id}", callback_data=f"task:details:{task.task_id}")]
         for task in _visible_recent_tasks(tasks)
     ]
     if include_archive is None:
         include_archive = _has_archive(tasks)
     if include_archive:
         rows.append([InlineKeyboardButton("📦 Архив задач", callback_data="tasks:archive")])
+    rows.append([InlineKeyboardButton("🏠 Меню", callback_data="menu:show")])
     return InlineKeyboardMarkup(
         rows
     )
@@ -255,17 +291,33 @@ def build_archived_tasks_message(tasks: list[TaskRecord]) -> str:
 
     lines = ["📦 Архив задач:", ""]
     for task in tasks:
+        status_emoji, status_label = task_status_display(task)
         project_name = task.project_name or "не определён"
-        lines.append(f"{task.task_id} — {project_name} — {task_title(task)}")
+        lines.extend(
+            [
+                f"{status_emoji} {task.task_id}",
+                f"Проект: {project_name}",
+                f"Название: {task_title(task)}",
+                f"Статус: {status_label}",
+                "",
+            ]
+        )
+    lines.pop()
     return "\n".join(lines)
 
 
 def build_archived_tasks_keyboard(tasks: list[TaskRecord]) -> InlineKeyboardMarkup | None:
     rows = [
-        [InlineKeyboardButton(f"{task.task_id} — {task_title(task, limit=48)}", callback_data=f"task:details:{task.task_id}")]
+        [InlineKeyboardButton(f"{task_status_display(task)[0]} {task.task_id}", callback_data=f"task:details:{task.task_id}")]
         for task in tasks
     ]
-    rows.append([InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")])
+    rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="tasks:recent")])
+    rows.append(
+        [
+            InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent"),
+            InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
+        ]
+    )
     return InlineKeyboardMarkup(rows)
 
 

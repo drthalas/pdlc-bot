@@ -41,7 +41,7 @@ def test_creates_task_with_detected_project(tmp_path):
     assert result.record.status == "prompt_ready"
     assert result.response_text.startswith("✅ Задача создана: TASK-0001")
     assert "Проект: ai-sales-assistant" in result.response_text
-    assert "Статус: prompt готов" in result.response_text
+    assert "Статус: ⚪ prompt готов" in result.response_text
     assert "Текущий этап:" in result.response_text
     assert "- codex_prompt.md" not in result.response_text
 

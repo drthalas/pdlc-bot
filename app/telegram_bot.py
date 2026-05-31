@@ -41,6 +41,7 @@ from app.telegram_ui import (
     build_start_message,
     build_status_message,
     build_task_action_keyboard,
+    build_task_subview_keyboard,
     get_menu_action,
 )
 
@@ -272,6 +273,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
+    if data == "menu:show":
+        await query.edit_message_text(
+            build_start_message(),
+            reply_markup=build_main_menu_keyboard(),
+        )
+        return
+
     if data == "projects:add":
         await query.edit_message_text(
             build_add_project_stub_message(),
@@ -353,7 +361,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
         await query.edit_message_text(
             format_task_artifacts_response(record, artifacts=list_artifacts(record.workspace_path)),
-            reply_markup=build_task_action_keyboard(record),
+            reply_markup=build_task_subview_keyboard(record.task_id),
         )
         return
 
@@ -361,7 +369,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:prompt:")
         record = orchestrator.store.get_task(task_id)
         response = build_prompt_response(orchestrator.store, task_id)
-        reply_markup = build_task_action_keyboard(record) if record is not None else None
+        reply_markup = build_task_subview_keyboard(record.task_id) if record is not None else None
         await query.edit_message_text(response.message, reply_markup=reply_markup)
         return
 

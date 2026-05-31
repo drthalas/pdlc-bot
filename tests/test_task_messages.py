@@ -29,7 +29,7 @@ def test_format_created_response_with_project(tmp_path):
 
     assert message.startswith("✅ Задача создана: TASK-0001")
     assert "Проект: ai-sales-assistant" in message
-    assert "Статус: prompt готов" in message
+    assert "Статус: ⚪ prompt готов" in message
     assert "Текущий этап:" in message
     assert "Прогресс:" in message
     assert "✅ задача создана" in message
