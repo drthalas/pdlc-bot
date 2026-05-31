@@ -146,13 +146,11 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
+    keyboard = build_recent_tasks_keyboard(records)
     await update.message.reply_text(
         build_status_message(records),
-        reply_markup=build_persistent_menu_keyboard(),
+        reply_markup=keyboard or build_persistent_menu_keyboard(),
     )
-    keyboard = build_recent_tasks_keyboard(records)
-    if keyboard is not None:
-        await update.message.reply_text("Действия с задачами:", reply_markup=keyboard)
 
 
 async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -160,13 +158,11 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
+    keyboard = build_recent_tasks_keyboard(records)
     await update.message.reply_text(
         build_recent_tasks_message(records),
-        reply_markup=build_persistent_menu_keyboard(),
+        reply_markup=keyboard or build_persistent_menu_keyboard(),
     )
-    keyboard = build_recent_tasks_keyboard(records)
-    if keyboard is not None:
-        await update.message.reply_text("Действия с задачами:", reply_markup=keyboard)
 
 
 async def runbook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

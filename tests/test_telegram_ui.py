@@ -10,7 +10,7 @@ from app.post_run_controls import (
     task_result_state,
 )
 from app.task_store import TaskRecord
-from app.telegram_bot import handle_callback, handle_text, prompt, task
+from app.telegram_bot import handle_callback, handle_text, prompt, status, task, tasks
 from app.telegram_ui import (
     LONG_BUTTON_LABELS,
     MENU_BUTTON,
@@ -260,7 +260,10 @@ def test_handle_text_routes_legacy_tasks_button_without_creating_task(monkeypatc
     asyncio.run(handle_text(update, FakeContext(orchestrator)))
 
     assert orchestrator.created_texts == []
+    assert len(update.message.replies) == 1
     assert "🗂 Последние задачи:" in update.message.replies[0]["text"]
+    assert "тестовая задача" in update.message.replies[0]["text"]
+    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
 
 
 def test_handle_text_routes_new_tasks_button_without_creating_task(monkeypatch, tmp_path):
@@ -272,7 +275,10 @@ def test_handle_text_routes_new_tasks_button_without_creating_task(monkeypatch, 
     asyncio.run(handle_text(update, FakeContext(orchestrator)))
 
     assert orchestrator.created_texts == []
+    assert len(update.message.replies) == 1
     assert "🗂 Последние задачи:" in update.message.replies[0]["text"]
+    assert "тестовая задача" in update.message.replies[0]["text"]
+    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
 
 
 def test_handle_text_regular_text_still_creates_task(monkeypatch):
@@ -284,6 +290,33 @@ def test_handle_text_regular_text_still_creates_task(monkeypatch):
 
     assert orchestrator.created_texts == ["В pdlc-bot добавь кнопку"]
     assert update.message.replies[0]["text"] == "created"
+
+
+def test_tasks_command_sends_text_list_and_inline_keyboard_together(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    records = [make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot улучшить список задач")]
+    update = FakeUpdate("/tasks")
+
+    asyncio.run(tasks(update, FakeContext(RecordingOrchestrator(records=records))))
+
+    assert len(update.message.replies) == 1
+    assert "🗂 Последние задачи:" in update.message.replies[0]["text"]
+    assert "⚪ TASK-0001 — pdlc-bot" in update.message.replies[0]["text"]
+    assert "улучшить список задач" in update.message.replies[0]["text"]
+    assert "Статус:" in update.message.replies[0]["text"]
+    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
+
+
+def test_status_command_sends_text_list_and_inline_keyboard_together(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    records = [make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot проверить статус")]
+    update = FakeUpdate("/status")
+
+    asyncio.run(status(update, FakeContext(RecordingOrchestrator(records=records))))
+
+    assert len(update.message.replies) == 1
+    assert "⚪ TASK-0001 — pdlc-bot" in update.message.replies[0]["text"]
+    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
 
 
 def test_main_menu_keyboard_contains_runbook_action():
