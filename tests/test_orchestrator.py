@@ -39,11 +39,11 @@ def test_creates_task_with_detected_project(tmp_path):
     assert result.project_detected is True
     assert result.record.project_name == "ai-sales-assistant"
     assert result.record.status == "prompt_ready"
-    assert result.response_text.startswith("✅ Task created: TASK-0001")
-    assert "Project: ai-sales-assistant" in result.response_text
-    assert "Status: prompt_ready" in result.response_text
-    assert "- codex_prompt.md" in result.response_text
-    assert "- /prompt TASK-0001 — show Codex prompt" in result.response_text
+    assert result.response_text.startswith("✅ Задача создана: TASK-0001")
+    assert "Проект: ai-sales-assistant" in result.response_text
+    assert "Статус: prompt готов" in result.response_text
+    assert "Текущий этап:" in result.response_text
+    assert "- codex_prompt.md" not in result.response_text
 
 
 def test_creates_task_without_detected_project(tmp_path):
@@ -53,9 +53,9 @@ def test_creates_task_without_detected_project(tmp_path):
 
     assert result.project_detected is False
     assert result.record.project_name is None
-    assert result.response_text.startswith("⚠️ Task created: TASK-0001")
-    assert "Project: not detected" in result.response_text
-    assert "Please mention a project name or alias from /projects next time." in result.response_text
+    assert result.response_text.startswith("⚠️ Задача создана: TASK-0001")
+    assert "Проект: не определён" in result.response_text
+    assert "В следующий раз укажи название проекта или alias из /projects." in result.response_text
 
 
 def test_creates_artifacts(tmp_path):

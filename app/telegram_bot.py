@@ -16,9 +16,11 @@ from app.post_run_controls import (
     discard_task_changes,
     push_task_branch,
 )
-from app.task_messages import build_prompt_response, format_task_details_response
+from app.task_messages import build_prompt_response, format_task_artifacts_response, format_task_details_response
 from app.task_workspace import list_artifacts
 from app.telegram_ui import (
+    build_archived_tasks_keyboard,
+    build_archived_tasks_message,
     build_codex_post_run_keyboard,
     build_commit_confirm_keyboard,
     build_discard_confirm_keyboard,
@@ -41,7 +43,9 @@ from app.telegram_ui import (
 logger = logging.getLogger(__name__)
 NOISY_LOGGERS = ("httpx", "httpcore", "telegram", "telegram.ext", "apscheduler")
 RUNNING_CODEX_STATUSES = frozenset({"coding", "codex_running", "testing"})
-CODEX_CALLBACK_ACK = "Running Codex..."
+CODEX_CALLBACK_ACK = "Запускаю Codex..."
+RECENT_TASKS_QUERY_LIMIT = 11
+ARCHIVE_TASKS_LIMIT = 50
 
 
 def configure_safe_logging() -> None:
@@ -75,7 +79,7 @@ def is_task_running_status(status: str) -> bool:
 
 
 def build_codex_runner_started_message(task_id: str) -> str:
-    return f"⏳ Codex Runner started for {task_id}. This may take a while."
+    return f"⏳ Codex Runner запущен для {task_id}. Это может занять время."
 
 
 def final_codex_status_from_response(response: str) -> str:
@@ -103,7 +107,7 @@ async def _guard(update: Update) -> bool:
     if _is_allowed(update):
         return True
     if update.message:
-        await update.message.reply_text("Access denied.")
+        await update.message.reply_text("Доступ запрещён.")
     return False
 
 
@@ -111,7 +115,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     await update.message.reply_text(build_start_message(), reply_markup=build_persistent_menu_keyboard())
-    await update.message.reply_text("Choose an action:", reply_markup=build_main_menu_keyboard())
+    await update.message.reply_text("Выбери действие:", reply_markup=build_main_menu_keyboard())
 
 
 async def projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -125,35 +129,35 @@ async def projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
     keyboard = build_project_keyboard(registered)
     if keyboard is not None:
-        await update.message.reply_text("Project actions:", reply_markup=keyboard)
+        await update.message.reply_text("Действия с проектами:", reply_markup=keyboard)
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
-    records = orchestrator.store.list_tasks(limit=10)
+    records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
     await update.message.reply_text(
         build_status_message(records),
         reply_markup=build_persistent_menu_keyboard(),
     )
     keyboard = build_recent_tasks_keyboard(records)
     if keyboard is not None:
-        await update.message.reply_text("Task actions:", reply_markup=keyboard)
+        await update.message.reply_text("Действия с задачами:", reply_markup=keyboard)
 
 
 async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
-    records = orchestrator.store.list_tasks(limit=10)
+    records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
     await update.message.reply_text(
         build_recent_tasks_message(records),
         reply_markup=build_persistent_menu_keyboard(),
     )
     keyboard = build_recent_tasks_keyboard(records)
     if keyboard is not None:
-        await update.message.reply_text("Task actions:", reply_markup=keyboard)
+        await update.message.reply_text("Действия с задачами:", reply_markup=keyboard)
 
 
 async def runbook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -166,14 +170,14 @@ async def task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     if not context.args:
-        await update.message.reply_text("Usage: /task TASK-0001", reply_markup=build_persistent_menu_keyboard())
+        await update.message.reply_text("Использование: /task TASK-0001", reply_markup=build_persistent_menu_keyboard())
         return
 
     task_id = context.args[0].strip()
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     record = orchestrator.store.get_task(task_id)
     if record is None:
-        await update.message.reply_text(f"Task {task_id} not found.", reply_markup=build_persistent_menu_keyboard())
+        await update.message.reply_text(f"Задача {task_id} не найдена.", reply_markup=build_persistent_menu_keyboard())
         return
 
     await update.message.reply_text(
@@ -189,7 +193,7 @@ async def prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _guard(update):
         return
     if not context.args:
-        await update.message.reply_text("Usage: /prompt TASK-0001", reply_markup=build_persistent_menu_keyboard())
+        await update.message.reply_text("Использование: /prompt TASK-0001", reply_markup=build_persistent_menu_keyboard())
         return
 
     task_id = context.args[0].strip()
@@ -228,7 +232,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         result = orchestrator.create_task(update.message.text)
     except Exception:
         logger.exception("Failed to create task")
-        await update.message.reply_text("Could not create the task. Check local logs for details.")
+        await update.message.reply_text("Не удалось создать задачу. Подробности смотри в локальных логах.")
         return
 
     await update.message.reply_text(
@@ -261,15 +265,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     if data == "tasks:recent":
-        records = orchestrator.store.list_tasks(limit=10)
+        records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
         await query.edit_message_text(
             build_recent_tasks_message(records),
             reply_markup=build_recent_tasks_keyboard(records),
         )
         return
 
+    if data == "tasks:archive":
+        records = orchestrator.store.list_tasks(limit=ARCHIVE_TASKS_LIMIT, offset=10)
+        await query.edit_message_text(
+            build_archived_tasks_message(records),
+            reply_markup=build_archived_tasks_keyboard(records),
+        )
+        return
+
     if data == "status:show":
-        records = orchestrator.store.list_tasks(limit=10)
+        records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
         await query.edit_message_text(
             build_status_message(records),
             reply_markup=build_recent_tasks_keyboard(records),
@@ -284,7 +296,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         project_name = data.removeprefix("project:show:")
         project = orchestrator.registry.get(project_name)
         if project is None:
-            await query.edit_message_text(f"Project {project_name} not found.")
+            await query.edit_message_text(f"Проект {project_name} не найден.")
             return
         await query.edit_message_text(build_project_details_message(project))
         return
@@ -293,10 +305,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:details:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         await query.edit_message_text(
             format_task_details_response(record, artifacts=list_artifacts(record.workspace_path)),
+            reply_markup=build_task_action_keyboard(record),
+        )
+        return
+
+    if data.startswith("task:artifacts:"):
+        task_id = data.removeprefix("task:artifacts:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
+            return
+        await query.edit_message_text(
+            format_task_artifacts_response(record, artifacts=list_artifacts(record.workspace_path)),
             reply_markup=build_task_action_keyboard(record),
         )
         return
@@ -313,11 +337,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:run_codex:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         if is_task_running_status(record.status):
             await query.edit_message_text(
-                f"Task {task_id} is already running.",
+                f"Задача {task_id} уже выполняется.",
                 reply_markup=build_task_action_keyboard(record),
             )
             return
@@ -338,7 +362,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:show_diff:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         await query.edit_message_text(
             build_show_diff_message(record),
@@ -358,10 +382,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:commit:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         await query.edit_message_text(
-            f"Commit local changes for {task_id}?\n\nMessage: {build_commit_message(record)}",
+            f"Закоммитить локальные изменения для {task_id}?\n\nСообщение: {build_commit_message(record)}",
             reply_markup=build_commit_confirm_keyboard(task_id),
         )
         return
@@ -370,7 +394,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:confirm_commit:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         result = commit_task_changes(record)
         if result.ok:
@@ -386,10 +410,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:push:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         await query.edit_message_text(
-            f"Push branch for {task_id}?\n\nThis will run `git push -u origin <branch>`.",
+            f"Отправить branch для {task_id}?\n\nБудет выполнено `git push -u origin <branch>`.",
             reply_markup=build_push_confirm_keyboard(task_id),
         )
         return
@@ -398,7 +422,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:confirm_push:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         result = push_task_branch(record)
         await query.edit_message_text(result.message, reply_markup=build_task_action_keyboard(record))
@@ -408,10 +432,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:discard:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         await query.edit_message_text(
-            f"Discard local changes for {task_id}?\n\nThis will run `git reset --hard` and `git checkout main`.",
+            f"Откатить локальные изменения для {task_id}?\n\nБудет выполнено `git reset --hard` и `git checkout main`.",
             reply_markup=build_discard_confirm_keyboard(task_id),
         )
         return
@@ -420,13 +444,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         task_id = data.removeprefix("task:confirm_discard:")
         record = orchestrator.store.get_task(task_id)
         if record is None:
-            await query.edit_message_text(f"Task {task_id} not found.")
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         result = discard_task_changes(record)
         await query.edit_message_text(result.message, reply_markup=build_task_action_keyboard(record))
         return
 
-    await query.edit_message_text("Unknown action.")
+    await query.edit_message_text("Неизвестное действие.")
 
 
 def build_application() -> Application:

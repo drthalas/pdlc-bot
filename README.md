@@ -125,21 +125,24 @@ Useful endpoints:
 
 The bot uses a persistent bottom menu for navigation:
 
-- `🏠 Menu`
-- `📋 Projects`
-- `🗂 Tasks`
-- `ℹ️ Status`
+- `🏠 Меню`
+- `📋 Проекты`
+- `🗂 Задачи`
+- `ℹ️ Статус`
 
 The bottom menu is for navigation and remains available while using the bot. Inline buttons are still used for actions tied to a specific message or task.
 
 - `/start` opens the main menu.
 - `/projects` lists configured projects with project detail buttons.
-- `/tasks` shows recent tasks with task detail buttons.
-- New task responses include buttons for task details, Codex prompt, and recent tasks.
+- `/tasks` shows up to 10 recent tasks with short titles from `input.md`.
+- Older tasks are available from the `📦 Архив задач` inline button.
+- `/task TASK-ID` shows a user-friendly task card: title, project, status, current stage, progress checklist, and available next actions.
+- Technical artifacts are hidden from the default task card and shown through `🛠 Технические детали`.
+- New task responses include buttons for task details, Codex prompt, technical details, and recent tasks.
 
 The slash commands `/start`, `/projects`, `/status`, `/tasks`, `/task TASK-ID`, and `/prompt TASK-ID` remain available for direct lookup.
 
-Task messages include a `▶️ Run Codex` button, but Codex Runner is disabled by default. This version does not run Codex CLI.
+Prompt-ready task messages include a `▶️ Запустить Codex` button, but Codex Runner is disabled by default. This version does not run Codex CLI. Post-run tasks show diff, tests, review/commit, and discard controls instead of offering another Codex run.
 
 Runner configuration uses:
 

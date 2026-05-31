@@ -1,4 +1,10 @@
-from app.task_messages import build_prompt_response, format_task_created_response, format_task_details_response, task_title
+from app.task_messages import (
+    build_prompt_response,
+    format_task_artifacts_response,
+    format_task_created_response,
+    format_task_details_response,
+    task_title,
+)
 from app.task_store import TaskRecord, TaskStore
 
 
@@ -21,12 +27,14 @@ def test_format_created_response_with_project(tmp_path):
         artifacts=["input.md", "codex_prompt.md"],
     )
 
-    assert message.startswith("✅ Task created: TASK-0001")
-    assert "Project: ai-sales-assistant" in message
-    assert "Status: prompt_ready" in message
-    assert "- input.md" in message
-    assert "- /task TASK-0001 — show task details" in message
-    assert "- /prompt TASK-0001 — show Codex prompt" in message
+    assert message.startswith("✅ Задача создана: TASK-0001")
+    assert "Проект: ai-sales-assistant" in message
+    assert "Статус: prompt готов" in message
+    assert "Текущий этап:" in message
+    assert "Прогресс:" in message
+    assert "✅ задача создана" in message
+    assert "Технические файлы скрыты в отдельной кнопке." in message
+    assert "- input.md" not in message
 
 
 def test_format_created_response_without_project(tmp_path):
@@ -34,10 +42,10 @@ def test_format_created_response_without_project(tmp_path):
 
     message = format_task_created_response(record, project_detected=False, artifacts=["input.md"])
 
-    assert message.startswith("⚠️ Task created: TASK-0001")
-    assert "Project: not detected" in message
-    assert "Please mention a project name or alias from /projects next time." in message
-    assert "Artifacts:" not in message
+    assert message.startswith("⚠️ Задача создана: TASK-0001")
+    assert "Проект: не определён" in message
+    assert "В следующий раз укажи название проекта или alias из /projects." in message
+    assert "Файлы:" not in message
 
 
 def test_task_title_uses_first_input_line_and_strips_project_prefix(tmp_path):
@@ -75,7 +83,21 @@ def test_task_details_include_task_title(tmp_path):
 
     message = format_task_details_response(record, artifacts=["input.md"])
 
-    assert "Title: улучшить список задач" in message
+    assert "Название: улучшить список задач" in message
+    assert "Текущий этап:" in message
+    assert "Прогресс:" in message
+    assert "input.md" not in message
+
+
+def test_task_artifacts_response_shows_files_separately(tmp_path):
+    record = make_record(tmp_path, project_name="pdlc-bot")
+
+    message = format_task_artifacts_response(record, artifacts=["input.md", "codex_prompt.md"])
+
+    assert message.startswith("🛠 Технические детали TASK-0001")
+    assert "Рабочая папка:" in message
+    assert "- input.md" in message
+    assert "- codex_prompt.md" in message
 
 
 def test_build_prompt_response_returns_prompt(tmp_path):
@@ -97,7 +119,7 @@ def test_build_prompt_response_handles_missing_task(tmp_path):
     response = build_prompt_response(store, "TASK-9999")
 
     assert response.found is False
-    assert response.message == "Task TASK-9999 not found."
+    assert response.message == "Задача TASK-9999 не найдена."
 
 
 def test_build_prompt_response_handles_missing_prompt_file(tmp_path):
@@ -108,7 +130,7 @@ def test_build_prompt_response_handles_missing_prompt_file(tmp_path):
     response = build_prompt_response(store, record.task_id)
 
     assert response.found is False
-    assert response.message == "Codex prompt not found for TASK-0001."
+    assert response.message == "Codex prompt для TASK-0001 не найден."
 
 
 def test_build_prompt_response_truncates_long_prompt(tmp_path):
@@ -122,5 +144,5 @@ def test_build_prompt_response_truncates_long_prompt(tmp_path):
 
     assert response.found is True
     assert response.message.startswith("abc")
-    assert "Prompt truncated" in response.message
+    assert "Prompt обрезан" in response.message
     assert str(workspace / "codex_prompt.md") in response.message

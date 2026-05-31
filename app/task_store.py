@@ -115,7 +115,7 @@ class TaskStore:
     def recent_tasks(self, limit: int = 10) -> list[TaskRecord]:
         return self.list_tasks(limit=limit)
 
-    def list_tasks(self, limit: int = 10) -> list[TaskRecord]:
+    def list_tasks(self, limit: int = 10, offset: int = 0) -> list[TaskRecord]:
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -123,8 +123,9 @@ class TaskStore:
                 FROM tasks
                 ORDER BY id DESC
                 LIMIT ?
+                OFFSET ?
                 """,
-                (limit,),
+                (limit, offset),
             ).fetchall()
 
         return [

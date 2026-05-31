@@ -25,7 +25,8 @@ After task creation, show:
 - `▶️ Run Codex`
 - `📄 Task details`
 - `🧠 Codex prompt`
-- `🗂 Recent tasks`
+- `🗂 Последние задачи`
+- `🛠 Технические детали`
 
 When the user clicks `Run Codex`:
 

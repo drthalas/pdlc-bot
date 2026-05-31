@@ -42,9 +42,9 @@ def test_duplicate_run_codex_is_blocked_for_running_statuses():
 
 
 def test_run_codex_callback_ack_and_started_message_are_fast_user_feedback():
-    assert CODEX_CALLBACK_ACK == "Running Codex..."
+    assert CODEX_CALLBACK_ACK == "Запускаю Codex..."
     assert build_codex_runner_started_message("TASK-0007") == (
-        "⏳ Codex Runner started for TASK-0007. This may take a while."
+        "⏳ Codex Runner запущен для TASK-0007. Это может занять время."
     )
 
 

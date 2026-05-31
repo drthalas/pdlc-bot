@@ -17,6 +17,8 @@ from app.telegram_ui import (
     RUNBOOK_BUTTON,
     STATUS_BUTTON,
     TASKS_BUTTON,
+    build_archived_tasks_keyboard,
+    build_archived_tasks_message,
     build_codex_post_run_keyboard,
     build_commit_confirm_keyboard,
     build_discard_confirm_keyboard,
@@ -119,12 +121,16 @@ class FakeCallbackUpdate:
 
 
 class FakeStore:
-    def __init__(self, record: TaskRecord):
+    def __init__(self, record: TaskRecord, records: list[TaskRecord] | None = None):
         self.record = record
+        self.records = records or [record]
         self.status_updates = []
 
     def get_task(self, task_id: str):
         return self.record if task_id == self.record.task_id else None
+
+    def list_tasks(self, limit: int = 10, offset: int = 0):
+        return self.records[offset : offset + limit]
 
     def update_status(self, task_id: str, status: str):
         self.status_updates.append((task_id, status))
@@ -146,6 +152,14 @@ def make_callback_context(record: TaskRecord, args: list[str] | None = None):
     )
 
 
+def make_records_callback_context(records: list[TaskRecord]):
+    record = records[0]
+    return SimpleNamespace(
+        args=[],
+        application=SimpleNamespace(bot_data={"orchestrator": SimpleNamespace(store=FakeStore(record, records=records))}),
+    )
+
+
 def write_successful_post_run_artifacts(workspace: Path) -> None:
     workspace.mkdir()
     (workspace / "codex_exit_code.txt").write_text("0\n", encoding="utf-8")
@@ -157,8 +171,8 @@ def write_successful_post_run_artifacts(workspace: Path) -> None:
 def test_start_message_mentions_main_actions():
     message = build_start_message()
 
-    assert "PDLC Bot is running." in message
-    assert "Choose an action:" in message
+    assert "PDLC Bot работает." in message
+    assert "Выбери действие:" in message
 
 
 def test_persistent_menu_keyboard_contains_navigation_buttons():
@@ -193,10 +207,10 @@ def test_runbook_message_contains_short_operational_help():
     message = build_runbook_message()
 
     assert "docs/MAC_MINI_RUNBOOK.md" in message
-    assert "service status" in message
-    assert "logs" in message
+    assert "статус сервиса" in message
+    assert "логи" in message
     assert "restart" in message
-    assert "deployed version check" in message
+    assert "проверка deployed version" in message
     assert "ssh hermes-mini" not in message
     assert ".env" not in message
 
@@ -208,7 +222,7 @@ def test_handle_text_routes_runbook_button_without_creating_task(monkeypatch):
     asyncio.run(handle_text(update, FakeContext()))
 
     assert len(update.message.replies) == 1
-    assert "Mac mini runbook:" in update.message.replies[0]["text"]
+    assert "Runbook для Mac mini:" in update.message.replies[0]["text"]
     assert update.message.replies[0]["reply_markup"] is not None
 
 
@@ -220,7 +234,7 @@ def test_handle_callback_routes_runbook_action(monkeypatch):
 
     assert update.callback_query.answers == [None]
     assert len(update.callback_query.edits) == 1
-    assert "Mac mini runbook:" in update.callback_query.edits[0]["text"]
+    assert "Runbook для Mac mini:" in update.callback_query.edits[0]["text"]
 
 
 def test_handle_callback_shows_post_run_keyboard_after_successful_codex_run(monkeypatch, tmp_path):
@@ -264,7 +278,7 @@ def test_handle_callback_confirm_commit_shows_push_button_after_mocked_commit(mo
     asyncio.run(handle_callback(update, make_callback_context(record)))
 
     assert "Committed local changes." in update.callback_query.edits[-1]["text"]
-    assert "📤 Push branch" in button_text(update.callback_query.edits[-1]["reply_markup"])
+    assert "📤 Отправить branch" in button_text(update.callback_query.edits[-1]["reply_markup"])
 
 
 def test_recent_tasks_message_with_tasks(tmp_path):
@@ -273,13 +287,13 @@ def test_recent_tasks_message_with_tasks(tmp_path):
 
     message = build_recent_tasks_message([first, second])
 
-    assert "Recent tasks:" in message
+    assert "Последние задачи:" in message
     assert "TASK-0002 — pdlc-bot — улучши генерацию prompt и список задач" in message
     assert "TASK-0001 — pdlc-bot — добавить кнопки" in message
 
 
 def test_recent_tasks_message_without_tasks():
-    assert build_recent_tasks_message([]) == "No tasks created yet."
+    assert build_recent_tasks_message([]) == "Задачи ещё не созданы."
 
 
 def test_recent_tasks_message_missing_input_falls_back_to_task_id(tmp_path):
@@ -305,6 +319,38 @@ def test_recent_tasks_message_truncates_long_title(tmp_path):
     assert "…" in message
 
 
+def test_recent_tasks_message_limits_to_ten_and_mentions_archive(tmp_path):
+    records = [
+        make_task_with_input(tmp_path, f"TASK-{index:04d}", f"В pdlc-bot задача {index}")
+        for index in range(12, 0, -1)
+    ]
+
+    message = build_recent_tasks_message(records)
+    markup = build_recent_tasks_keyboard(records)
+
+    assert "TASK-0012" in message
+    assert "TASK-0003" in message
+    assert "TASK-0002" not in message
+    assert "Более старые задачи доступны в архиве." in message
+    assert "📦 Архив задач" in button_text(markup)
+    assert "tasks:archive" in button_data(markup)
+    assert len([text for text in button_text(markup) if text.startswith("TASK-")]) == 10
+
+
+def test_archived_tasks_message_and_keyboard_show_older_tasks(tmp_path):
+    records = [
+        make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot старая задача"),
+        make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot самая старая задача"),
+    ]
+
+    message = build_archived_tasks_message(records)
+    markup = build_archived_tasks_keyboard(records)
+
+    assert "📦 Архив задач:" in message
+    assert "TASK-0002 — pdlc-bot — старая задача" in message
+    assert "🗂 Последние задачи" in button_text(markup)
+
+
 def test_callback_data_is_compact_and_contains_expected_ids():
     markup = build_task_actions_keyboard("TASK-0002")
 
@@ -312,6 +358,7 @@ def test_callback_data_is_compact_and_contains_expected_ids():
     assert "task:run_codex:TASK-0002" in data
     assert "task:details:TASK-0002" in data
     assert "task:prompt:TASK-0002" in data
+    assert "task:artifacts:TASK-0002" in data
     assert "tasks:recent" in data
     assert all(len(item.encode("utf-8")) <= 64 for item in data)
 
@@ -323,6 +370,7 @@ def test_task_actions_keyboard_contains_expected_buttons():
     assert "▶️ Запустить Codex" in texts
     assert "📄 Детали задачи" in texts
     assert "🧠 Codex prompt" in texts
+    assert "🛠 Технические детали" in texts
     assert "🗂 Последние задачи" in texts
 
 
@@ -339,6 +387,7 @@ def test_codex_post_run_keyboard_contains_safe_first_layer_actions():
     assert "task:tests_again:TASK-0013" in data
     assert "task:commit:TASK-0013" in data
     assert "task:discard:TASK-0013" in data
+    assert "task:artifacts:TASK-0013" in data
     assert "tasks:recent" in data
     assert all(len(item.encode("utf-8")) <= 64 for item in data)
 
@@ -379,7 +428,7 @@ def test_task_action_keyboard_committed_shows_push_branch(tmp_path):
     markup = build_task_action_keyboard(record)
 
     assert task_result_state(record) == TASK_RESULT_COMMITTED
-    assert button_text(markup) == ["📤 Push branch", "🗂 Последние задачи"]
+    assert button_text(markup) == ["📤 Отправить branch", "🛠 Технические детали", "🗂 Последние задачи"]
 
 
 def test_show_diff_callback_keeps_post_run_buttons(monkeypatch, tmp_path):
@@ -422,6 +471,39 @@ def test_task_details_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_pa
     assert "▶️ Запустить Codex" not in texts
 
 
+def test_task_artifacts_callback_shows_technical_files(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0018"
+    workspace.mkdir()
+    (workspace / "input.md").write_text("В pdlc-bot улучшить карточку задачи\n", encoding="utf-8")
+    (workspace / "codex_prompt.md").write_text("prompt\n", encoding="utf-8")
+    record = TaskRecord("TASK-0018", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeCallbackUpdate("task:artifacts:TASK-0018")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    text = update.callback_query.edits[-1]["text"]
+    assert "🛠 Технические детали TASK-0018" in text
+    assert "- input.md" in text
+    assert "- codex_prompt.md" in text
+
+
+def test_archive_callback_shows_older_tasks(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    records = [
+        make_task_with_input(tmp_path, f"TASK-{index:04d}", f"В pdlc-bot задача {index}")
+        for index in range(12, 0, -1)
+    ]
+    update = FakeCallbackUpdate("tasks:archive")
+
+    asyncio.run(handle_callback(update, make_records_callback_context(records)))
+
+    text = update.callback_query.edits[-1]["text"]
+    assert "📦 Архив задач:" in text
+    assert "TASK-0002" in text
+    assert "TASK-0012" not in text
+
+
 def test_task_command_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_path):
     monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
     workspace = tmp_path / "TASK-0013"
@@ -456,7 +538,7 @@ def test_task_action_keyboard_running_shows_running_state(tmp_path):
     markup = build_task_action_keyboard(record)
 
     assert task_result_state(record) == "running"
-    assert button_text(markup) == ["⏳ Running", "🗂 Последние задачи"]
+    assert button_text(markup) == ["⏳ Выполняется", "🛠 Технические детали", "🗂 Последние задачи"]
 
 
 def test_task_action_callback_data_is_compact_for_all_states(tmp_path):
@@ -525,6 +607,6 @@ def test_project_details_message():
 
     message = build_project_details_message(project)
 
-    assert "Project: pdlc-bot" in message
+    assert "Проект: pdlc-bot" in message
     assert "Aliases: pdlc, бот задач" in message
     assert "Stack: Python, Telegram Bot, SQLite" in message
