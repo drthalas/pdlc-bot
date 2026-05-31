@@ -7,6 +7,7 @@ def test_loads_projects_from_yaml(tmp_path):
         """
 projects:
   - name: ai-sales-assistant
+    description: AI sales assistant service
     aliases:
       - sales bot
       - продажи
@@ -28,6 +29,7 @@ projects:
     projects = registry.list_projects()
     assert len(projects) == 1
     assert projects[0].name == "ai-sales-assistant"
+    assert projects[0].description == "AI sales assistant service"
     assert projects[0].aliases == ["sales bot", "продажи"]
 
 

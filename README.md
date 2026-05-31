@@ -80,6 +80,7 @@ Example project entry:
 ```yaml
 projects:
   - name: example-api
+    description: Example backend API service
     aliases:
       - api
       - backend
@@ -133,7 +134,7 @@ The bot uses a persistent bottom menu for navigation:
 The bottom menu is for navigation and remains available while using the bot. Inline buttons are still used for actions tied to a specific message or task.
 
 - `/start` opens the main menu.
-- `/projects` lists configured projects with project detail buttons.
+- `/projects` lists configured projects with descriptions, GitHub URLs, local status, task counts, project cards, and a safe `Добавить проект` stub.
 - `/tasks` shows up to 10 recent tasks with short titles from `input.md`.
 - Older tasks are available from the `📦 Архив задач` inline button.
 - `/task TASK-ID` shows a user-friendly task card: title, project, status, current stage, progress checklist, and available next actions.

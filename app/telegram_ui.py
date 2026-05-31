@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from app.post_run_controls import (
@@ -23,6 +25,7 @@ LEGACY_PROJECTS_BUTTON = "📋 Projects"
 LEGACY_TASKS_BUTTON = "🗂 Tasks"
 LEGACY_STATUS_BUTTON = "ℹ️ Status"
 RECENT_TASKS_LIMIT = 10
+PROJECT_TASKS_PREVIEW_LIMIT = 5
 
 MENU_ACTIONS = {
     MENU_BUTTON: "menu",
@@ -266,38 +269,120 @@ def build_archived_tasks_keyboard(tasks: list[TaskRecord]) -> InlineKeyboardMark
     return InlineKeyboardMarkup(rows)
 
 
-def build_projects_message(projects: list[Project]) -> str:
+def _project_description(project: Project) -> str:
+    return project.description or "Описание не указано."
+
+
+def _project_local_status(project: Project) -> str:
+    if not project.local_path:
+        return "local_path не указан"
+    return "локальная папка доступна" if Path(project.local_path).exists() else "локальная папка не найдена"
+
+
+def _project_tasks(project: Project, tasks: list[TaskRecord] | None) -> list[TaskRecord]:
+    if not tasks:
+        return []
+    project_name = project.name.casefold()
+    return [task for task in tasks if (task.project_name or "").casefold() == project_name]
+
+
+def build_projects_message(projects: list[Project], tasks: list[TaskRecord] | None = None) -> str:
     if not projects:
         return "Проекты не настроены. Сначала создай config/projects.yaml."
 
-    lines = ["Настроенные проекты:", ""]
-    lines.extend(f"- {project.name}" for project in projects)
+    lines = ["📋 Проекты:", ""]
+    for project in projects:
+        project_tasks = _project_tasks(project, tasks)
+        lines.extend(
+            [
+                f"• {project.name}",
+                f"  Описание: {_project_description(project)}",
+                f"  GitHub URL: {project.repo_url or 'не указан'}",
+                f"  Статус: {_project_local_status(project)}",
+                f"  Задач: {len(project_tasks)}",
+                "",
+            ]
+        )
     return "\n".join(lines)
 
 
-def build_project_keyboard(projects: list[Project]) -> InlineKeyboardMarkup | None:
-    if not projects:
-        return None
-
+def build_project_keyboard(projects: list[Project]) -> InlineKeyboardMarkup:
     rows = []
     for project in projects:
         callback_data = f"project:show:{project.name}"
         if len(callback_data.encode("utf-8")) <= 64:
-            rows.append([InlineKeyboardButton(project.name, callback_data=callback_data)])
+            rows.append([InlineKeyboardButton(f"📁 {project.name}", callback_data=callback_data)])
+    rows.append([InlineKeyboardButton("➕ Добавить проект", callback_data="projects:add")])
     rows.append([InlineKeyboardButton("🗂 Последние задачи", callback_data="tasks:recent")])
     return InlineKeyboardMarkup(rows)
 
 
-def build_project_details_message(project: Project) -> str:
+def build_project_details_message(project: Project, tasks: list[TaskRecord] | None = None) -> str:
     aliases = ", ".join(project.aliases) if project.aliases else "нет"
     stack = ", ".join(project.stack) if project.stack else "не настроен"
-    return (
-        f"Проект: {project.name}\n"
-        f"Aliases: {aliases}\n"
-        f"Stack: {stack}\n\n"
-        "Чтобы создать задачу, отправь сообщение с упоминанием этого проекта.\n"
-        f"Пример:\nВ {project.name} добавь ..."
+    project_tasks = _project_tasks(project, tasks)
+    lines = [
+        f"📁 Карточка проекта: {project.name}",
+        "",
+        f"Описание: {_project_description(project)}",
+        f"GitHub URL: {project.repo_url or 'не указан'}",
+        f"Local path: {project.local_path or 'не указан'}",
+        f"Статус: {_project_local_status(project)}",
+        f"Алиасы: {aliases}",
+        f"Стек: {stack}",
+        f"Задач: {len(project_tasks)}",
+        "",
+        "Последние задачи проекта:",
+    ]
+    if project_tasks:
+        for task in project_tasks[:PROJECT_TASKS_PREVIEW_LIMIT]:
+            lines.append(f"- {task.task_id} — {task_title(task)}")
+    else:
+        lines.append("Задач для этого проекта пока нет.")
+    return "\n".join(lines)
+
+
+def build_project_details_keyboard(project: Project) -> InlineKeyboardMarkup:
+    rows = []
+    tasks_callback = f"project:tasks:{project.name}"
+    if len(tasks_callback.encode("utf-8")) <= 64:
+        rows.append([InlineKeyboardButton("🗂 Задачи проекта", callback_data=tasks_callback)])
+    rows.append([InlineKeyboardButton("⬅️ Назад к проектам", callback_data="projects:show")])
+    rows.append([InlineKeyboardButton("➕ Добавить проект", callback_data="projects:add")])
+    return InlineKeyboardMarkup(rows)
+
+
+def build_project_tasks_message(project: Project, tasks: list[TaskRecord] | None = None) -> str:
+    project_tasks = _project_tasks(project, tasks)
+    if not project_tasks:
+        return f"Для проекта {project.name} пока нет задач."
+
+    lines = [f"🗂 Задачи проекта {project.name}:", ""]
+    for task in project_tasks:
+        lines.append(f"{task.task_id} — {task.status} — {task_title(task)}")
+    return "\n".join(lines)
+
+
+def build_project_tasks_keyboard(project: Project) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("📁 Карточка проекта", callback_data=f"project:show:{project.name}")],
+            [InlineKeyboardButton("⬅️ Назад к проектам", callback_data="projects:show")],
+            [InlineKeyboardButton("➕ Добавить проект", callback_data="projects:add")],
+        ]
     )
+
+
+def build_add_project_stub_message() -> str:
+    return (
+        "➕ Добавление проекта пока не реализовано.\n\n"
+        "Будущий flow запросит описание, GitHub URL, local_path, aliases и stack, затем покажет предпросмотр перед сохранением.\n\n"
+        "Сейчас бот ничего не клонирует и не меняет config/projects.yaml."
+    )
+
+
+def build_add_project_stub_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад к проектам", callback_data="projects:show")]])
 
 
 def build_status_message(tasks: list[TaskRecord]) -> str:

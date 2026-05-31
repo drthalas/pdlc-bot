@@ -28,6 +28,7 @@ def _contains_word_sequence(words: list[str], candidate: list[str]) -> bool:
 @dataclass(frozen=True)
 class Project:
     name: str
+    description: str = ""
     aliases: list[str] = field(default_factory=list)
     repo_url: str = ""
     local_path: str = ""
@@ -60,6 +61,7 @@ class ProjectRegistry:
         for item in payload.get("projects", []):
             project = Project(
                 name=str(item.get("name", "")).strip(),
+                description=str(item.get("description", "")).strip(),
                 aliases=[str(alias).strip() for alias in item.get("aliases", [])],
                 repo_url=str(item.get("repo_url", "")).strip(),
                 local_path=str(item.get("local_path", "")).strip(),

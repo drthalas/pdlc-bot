@@ -1,5 +1,6 @@
 projects:
   - name: example-api
+    description: Example backend API service
     aliases:
       - api
       - backend

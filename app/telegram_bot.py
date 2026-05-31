@@ -19,6 +19,8 @@ from app.post_run_controls import (
 from app.task_messages import build_prompt_response, format_task_artifacts_response, format_task_details_response
 from app.task_workspace import list_artifacts
 from app.telegram_ui import (
+    build_add_project_stub_keyboard,
+    build_add_project_stub_message,
     build_archived_tasks_keyboard,
     build_archived_tasks_message,
     build_codex_post_run_keyboard,
@@ -26,8 +28,11 @@ from app.telegram_ui import (
     build_discard_confirm_keyboard,
     build_main_menu_keyboard,
     build_persistent_menu_keyboard,
+    build_project_details_keyboard,
     build_project_details_message,
     build_project_keyboard,
+    build_project_tasks_keyboard,
+    build_project_tasks_message,
     build_push_confirm_keyboard,
     build_projects_message,
     build_recent_tasks_keyboard,
@@ -46,6 +51,7 @@ RUNNING_CODEX_STATUSES = frozenset({"coding", "codex_running", "testing"})
 CODEX_CALLBACK_ACK = "Запускаю Codex..."
 RECENT_TASKS_QUERY_LIMIT = 11
 ARCHIVE_TASKS_LIMIT = 50
+PROJECT_TASKS_QUERY_LIMIT = 1000
 
 
 def configure_safe_logging() -> None:
@@ -123,8 +129,9 @@ async def projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     registered = orchestrator.registry.list_projects()
+    records = orchestrator.store.list_tasks(limit=PROJECT_TASKS_QUERY_LIMIT)
     await update.message.reply_text(
-        build_projects_message(registered),
+        build_projects_message(registered, records),
         reply_markup=build_persistent_menu_keyboard(),
     )
     keyboard = build_project_keyboard(registered)
@@ -258,9 +265,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if data == "projects:show":
         registered = orchestrator.registry.list_projects()
+        records = orchestrator.store.list_tasks(limit=PROJECT_TASKS_QUERY_LIMIT)
         await query.edit_message_text(
-            build_projects_message(registered),
+            build_projects_message(registered, records),
             reply_markup=build_project_keyboard(registered),
+        )
+        return
+
+    if data == "projects:add":
+        await query.edit_message_text(
+            build_add_project_stub_message(),
+            reply_markup=build_add_project_stub_keyboard(),
         )
         return
 
@@ -298,7 +313,24 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if project is None:
             await query.edit_message_text(f"Проект {project_name} не найден.")
             return
-        await query.edit_message_text(build_project_details_message(project))
+        records = orchestrator.store.list_tasks(limit=PROJECT_TASKS_QUERY_LIMIT)
+        await query.edit_message_text(
+            build_project_details_message(project, records),
+            reply_markup=build_project_details_keyboard(project),
+        )
+        return
+
+    if data.startswith("project:tasks:"):
+        project_name = data.removeprefix("project:tasks:")
+        project = orchestrator.registry.get(project_name)
+        if project is None:
+            await query.edit_message_text(f"Проект {project_name} не найден.")
+            return
+        records = orchestrator.store.list_tasks(limit=PROJECT_TASKS_QUERY_LIMIT)
+        await query.edit_message_text(
+            build_project_tasks_message(project, records),
+            reply_markup=build_project_tasks_keyboard(project),
+        )
         return
 
     if data.startswith("task:details:"):

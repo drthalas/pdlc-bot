@@ -21,6 +21,8 @@ from app.telegram_ui import (
     LEGACY_PROJECTS_BUTTON,
     LEGACY_STATUS_BUTTON,
     LEGACY_TASKS_BUTTON,
+    build_add_project_stub_keyboard,
+    build_add_project_stub_message,
     build_archived_tasks_keyboard,
     build_archived_tasks_message,
     build_codex_post_run_keyboard,
@@ -28,8 +30,12 @@ from app.telegram_ui import (
     build_discard_confirm_keyboard,
     build_main_menu_keyboard,
     build_persistent_menu_keyboard,
+    build_project_details_keyboard,
     build_project_details_message,
     build_project_keyboard,
+    build_project_tasks_keyboard,
+    build_project_tasks_message,
+    build_projects_message,
     build_push_branch_keyboard,
     build_push_confirm_keyboard,
     build_recent_tasks_keyboard,
@@ -159,6 +165,20 @@ class FakeStore:
         return True
 
 
+class FakeRegistry:
+    def __init__(self, projects: list[Project]):
+        self.projects = projects
+
+    def list_projects(self):
+        return self.projects
+
+    def get(self, name_or_alias: str):
+        for project in self.projects:
+            if project.name == name_or_alias or name_or_alias in project.aliases:
+                return project
+        return None
+
+
 def make_callback_context(record: TaskRecord, args: list[str] | None = None):
     return SimpleNamespace(
         args=args or [],
@@ -171,6 +191,20 @@ def make_records_callback_context(records: list[TaskRecord]):
     return SimpleNamespace(
         args=[],
         application=SimpleNamespace(bot_data={"orchestrator": SimpleNamespace(store=FakeStore(record, records=records))}),
+    )
+
+
+def make_project_callback_context(projects: list[Project], records: list[TaskRecord]):
+    return SimpleNamespace(
+        args=[],
+        application=SimpleNamespace(
+            bot_data={
+                "orchestrator": SimpleNamespace(
+                    registry=FakeRegistry(projects),
+                    store=FakeStore(records[0], records=records),
+                )
+            }
+        ),
     )
 
 
@@ -644,22 +678,121 @@ def test_project_keyboard_contains_projects():
 
     markup = build_project_keyboard(projects)
 
-    assert "pdlc-bot" in button_text(markup)
-    assert "example-api" in button_text(markup)
+    assert "📁 pdlc-bot" in button_text(markup)
+    assert "📁 example-api" in button_text(markup)
+    assert "➕ Добавить проект" in button_text(markup)
     assert "project:show:pdlc-bot" in button_data(markup)
     assert "project:show:example-api" in button_data(markup)
+    assert "projects:add" in button_data(markup)
     assert all(len(item.encode("utf-8")) <= 64 for item in button_data(markup))
 
 
-def test_project_details_message():
+def test_project_keyboard_contains_add_stub_without_projects():
+    markup = build_project_keyboard([])
+
+    assert "➕ Добавить проект" in button_text(markup)
+    assert "projects:add" in button_data(markup)
+
+
+def test_projects_message_shows_project_cards_with_counts(tmp_path):
     project = Project(
         name="pdlc-bot",
+        description="Telegram PDLC бот",
+        repo_url="https://github.com/drthalas/pdlc-bot.git",
+        local_path=str(tmp_path),
+    )
+    task = make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot улучшить проекты")
+
+    message = build_projects_message([project], [task])
+
+    assert "📋 Проекты:" in message
+    assert "• pdlc-bot" in message
+    assert "Описание: Telegram PDLC бот" in message
+    assert "GitHub URL: https://github.com/drthalas/pdlc-bot.git" in message
+    assert "Статус: локальная папка доступна" in message
+    assert "Задач: 1" in message
+
+
+def test_project_details_message(tmp_path):
+    project = Project(
+        name="pdlc-bot",
+        description="Telegram PDLC бот",
         aliases=["pdlc", "бот задач"],
+        repo_url="https://github.com/drthalas/pdlc-bot.git",
+        local_path=str(tmp_path),
         stack=["Python", "Telegram Bot", "SQLite"],
     )
+    task = make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot добавь карточку проекта")
 
-    message = build_project_details_message(project)
+    message = build_project_details_message(project, [task])
 
-    assert "Проект: pdlc-bot" in message
-    assert "Aliases: pdlc, бот задач" in message
-    assert "Stack: Python, Telegram Bot, SQLite" in message
+    assert "📁 Карточка проекта: pdlc-bot" in message
+    assert "Описание: Telegram PDLC бот" in message
+    assert "GitHub URL: https://github.com/drthalas/pdlc-bot.git" in message
+    assert f"Local path: {tmp_path}" in message
+    assert "Статус: локальная папка доступна" in message
+    assert "Алиасы: pdlc, бот задач" in message
+    assert "Стек: Python, Telegram Bot, SQLite" in message
+    assert "Задач: 1" in message
+    assert "TASK-0002 — добавь карточку проекта" in message
+
+
+def test_project_details_keyboard_contains_expected_actions():
+    project = Project(name="pdlc-bot")
+    markup = build_project_details_keyboard(project)
+
+    assert "🗂 Задачи проекта" in button_text(markup)
+    assert "⬅️ Назад к проектам" in button_text(markup)
+    assert "➕ Добавить проект" in button_text(markup)
+    assert button_data(markup) == ["project:tasks:pdlc-bot", "projects:show", "projects:add"]
+    assert all(len(item.encode("utf-8")) <= 64 for item in button_data(markup))
+
+
+def test_project_tasks_message_filters_by_project(tmp_path):
+    pdlc_task = make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot добавить GitHub URL", "pdlc-bot")
+    other_task = make_task_with_input(tmp_path, "TASK-0001", "В other изменить API", "other")
+
+    message = build_project_tasks_message(Project(name="pdlc-bot"), [pdlc_task, other_task])
+
+    assert "🗂 Задачи проекта pdlc-bot:" in message
+    assert "TASK-0002" in message
+    assert "TASK-0001" not in message
+    assert button_data(build_project_tasks_keyboard(Project(name="pdlc-bot"))) == [
+        "project:show:pdlc-bot",
+        "projects:show",
+        "projects:add",
+    ]
+
+
+def test_add_project_stub_is_safe():
+    message = build_add_project_stub_message()
+    markup = build_add_project_stub_keyboard()
+
+    assert "Добавление проекта пока не реализовано." in message
+    assert "ничего не клонирует" in message
+    assert "не меняет config/projects.yaml" in message
+    assert button_data(markup) == ["projects:show"]
+
+
+def test_project_callbacks_show_card_tasks_and_safe_add_stub(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    project = Project(
+        name="pdlc-bot",
+        description="Telegram PDLC бот",
+        repo_url="https://github.com/drthalas/pdlc-bot.git",
+        local_path=str(tmp_path),
+    )
+    records = [make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot добавить проекты")]
+
+    show_update = FakeCallbackUpdate("project:show:pdlc-bot")
+    asyncio.run(handle_callback(show_update, make_project_callback_context([project], records)))
+    assert "📁 Карточка проекта: pdlc-bot" in show_update.callback_query.edits[-1]["text"]
+    assert "🗂 Задачи проекта" in button_text(show_update.callback_query.edits[-1]["reply_markup"])
+
+    tasks_update = FakeCallbackUpdate("project:tasks:pdlc-bot")
+    asyncio.run(handle_callback(tasks_update, make_project_callback_context([project], records)))
+    assert "🗂 Задачи проекта pdlc-bot:" in tasks_update.callback_query.edits[-1]["text"]
+
+    add_update = FakeCallbackUpdate("projects:add")
+    asyncio.run(handle_callback(add_update, make_project_callback_context([project], records)))
+    assert "ничего не клонирует" in add_update.callback_query.edits[-1]["text"]
