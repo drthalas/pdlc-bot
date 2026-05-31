@@ -78,14 +78,22 @@ PROJECT_UX_KEYWORDS = (
     "раздел \"проекты\"",
     "проекты",
     "проектов",
-    "карточк проект",
+    "карточка проекта",
+    "карточку проекта",
+    "карточке проекта",
+    "карточки проекта",
+    "карточки проектов",
+    "карточек проектов",
     "project card",
     "project cards",
     "project details",
     "детали проекта",
     "задачи проекта",
+    "задачами проекта",
     "github url",
     "repo url",
+    "repo_url",
+    "local_path",
     "описание",
     "добавить проект",
 )
@@ -186,6 +194,49 @@ def _contains_any(lowered: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword in lowered for keyword in keywords)
 
 
+def _is_project_card_request(lowered: str) -> bool:
+    project_card_phrases = (
+        "карточка проекта",
+        "карточку проекта",
+        "карточке проекта",
+        "карточки проекта",
+        "карточки проектов",
+        "карточек проектов",
+        "карточками проектов",
+        "project card",
+        "project cards",
+        "project details",
+        "детали проекта",
+    )
+    return any(phrase in lowered for phrase in project_card_phrases)
+
+
+def _is_task_card_request(lowered: str) -> bool:
+    task_card_phrases = (
+        "карточка задачи",
+        "карточку задачи",
+        "карточке задачи",
+        "карточки задачи",
+        "карточек задач",
+        "task card",
+        "task details",
+        "детали задачи",
+        "/task",
+        "task-id",
+        "task id",
+    )
+    task_stage_phrases = (
+        "этап задачи",
+        "текущий этап задачи",
+        "прогресс задачи",
+        "progress checklist",
+        "prompt, codex, tests, review, commit",
+        "codex/tests/review/commit",
+        "codex, tests, review, commit",
+    )
+    return any(phrase in lowered for phrase in task_card_phrases + task_stage_phrases)
+
+
 def extract_requirements(raw_request: str) -> RequirementExtraction:
     lowered = raw_request.lower()
     goal = " ".join(raw_request.strip().split())
@@ -224,6 +275,7 @@ def extract_requirements(raw_request: str) -> RequirementExtraction:
         _add_unique(expected, "- `/projects` показывает проекты с описанием, GitHub URL, статусом и количеством задач.")
         _add_unique(expected, "- Каждый проект кликабельный и открывает карточку проекта.")
         _add_unique(expected, "- Карточка проекта показывает название, aliases, stack, GitHub URL, local path/status, описание и последние задачи этого проекта.")
+        _add_unique(expected, "- Карточка проекта показывает description, aliases, stack, repo_url, local_path и status.")
         _add_unique(expected, "- В карточке проекта есть кнопки `Задачи проекта`, `Назад к проектам`, `Добавить проект`.")
         _add_unique(steps, "Найти handlers и callbacks для `/projects` и `project:show:*`.")
         _add_unique(steps, "Проверить, какие поля доступны в `ProjectRegistry` и `config/projects.example.yaml`.")
@@ -231,6 +283,7 @@ def extract_requirements(raw_request: str) -> RequirementExtraction:
         _add_unique(steps, "Добавить user-friendly карточку проекта с aliases, stack, repo URL, local path/status и последними задачами проекта.")
         _add_unique(acceptance, "`/projects` показывает проекты с описанием, GitHub URL, статусом и количеством задач.")
         _add_unique(acceptance, "Проект кликабельный и открывает карточку проекта.")
+        _add_unique(acceptance, "Карточка проекта показывает description, aliases, stack, repo_url, local_path и status.")
         _add_unique(acceptance, "Есть кнопка `Назад к проектам`.")
         _add_unique(acceptance, "callback_data для новых project buttons не длиннее 64 bytes.")
         _add_unique(acceptance, "Существующая команда `/projects` не сломана.")
@@ -268,8 +321,7 @@ def extract_requirements(raw_request: str) -> RequirementExtraction:
         _add_unique(out_of_scope, "Не реализовывать полноценный onboarding нового проекта.")
         _add_unique(out_of_scope, "`Добавить проект` должен быть только безопасной заглушкой.")
 
-    is_project_card_request = "карточк проект" in lowered or "карточки проектов" in lowered
-    if "карточк" in lowered and "задач" in lowered and not is_project_card_request:
+    if _is_task_card_request(lowered):
         _add_unique(categories, "task_card_ux")
         _add_unique(entities, "карточка задачи")
         _add_unique(current, "- `/task TASK-ID` показывает слишком много технической информации и artifacts.")

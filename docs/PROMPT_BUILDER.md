@@ -73,6 +73,13 @@ Requirement extraction includes:
 
 Category hints such as Telegram UX, Codex Runner, Project management, Mac mini/deployment, and docs may add relevant files and safety checks. They must not override the extracted entities. If a request mentions "задачи проекта", the entity is project tasks, not automatically task cards or task archive.
 
+Project UX and task UX must stay separate:
+
+- "карточка проекта", "карточку проекта", "GitHub URL", "repo_url", "local_path", "описание проекта", and "задачи проекта" are project-management entities.
+- "карточка задачи", "TASK-ID", "этап задачи", and progress across prompt/Codex/tests/review/commit are task-card entities.
+- A project-management request must not receive task-card current behavior, task progress checklist, or archive behavior unless the user explicitly asks for task cards, task lists, or task archives.
+- A phrase like "задачами проекта" means tasks filtered by project, not a generic task card.
+
 The detailed method is documented in [docs/skills/analyst/SKILL.md](skills/analyst/SKILL.md), and prompt assembly is documented in [docs/skills/prompt_builder/SKILL.md](skills/prompt_builder/SKILL.md).
 
 ## Topic-Specific File Selection
@@ -237,6 +244,7 @@ Expected `Desired behavior` should mention:
 Expected acceptance criteria should include:
 
 - `/projects` shows projects with description, GitHub URL, status, and task count
+- project card shows description, aliases, stack, `repo_url`, `local_path`, and status
 - project card shows only tasks for that project
 - `Добавить проект` does not clone and does not modify `config/projects.yaml`
 - callback data stays within 64 bytes

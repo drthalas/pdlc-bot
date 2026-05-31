@@ -354,6 +354,39 @@ def test_codex_prompt_for_project_management_ux_uses_project_specific_decomposit
     assert "Старые задачи доступны через `📦 Архив задач`." not in prompt
 
 
+def test_codex_prompt_for_task_0023_project_card_does_not_mix_task_card_progress(tmp_path):
+    orchestrator = build_orchestrator(tmp_path)
+
+    result = orchestrator.create_task(
+        "В ai-sales-assistant улучши раздел Проекты: сделай карточку проекта с описанием, "
+        "GitHub URL, repo_url/local_path/status, задачами проекта и кнопкой Добавить проект."
+    )
+    prompt = (tmp_path / "tasks" / result.record.task_id / "codex_prompt.md").read_text(encoding="utf-8")
+
+    for phrase in (
+        "раздел `/projects`",
+        "карточки проектов",
+        "`/projects` показывает проекты с описанием, GitHub URL, статусом и количеством задач.",
+        "Проект кликабельный и открывает карточку проекта.",
+        "Карточка проекта показывает description, aliases, stack, repo_url, local_path и status.",
+        "Карточка проекта показывает последние задачи только этого проекта.",
+        "`Добавить проект` пока заглушка: ничего не клонирует и не меняет config.",
+    ):
+        assert phrase in prompt
+
+    for forbidden_phrase in (
+        "`/task TASK-ID` показывает слишком много технической информации",
+        "Карточка задачи показывает TASK-ID",
+        "Карточка задачи содержит название, проект, статус, текущий этап и progress checklist.",
+        "prompt, Codex, tests, review, commit",
+        "Codex выполнен или нет",
+        "review ожидается или выполнен",
+        "commit сделан или нет",
+        "Post-run task показывает diff/tests/review/commit/discard",
+    ):
+        assert forbidden_phrase not in prompt
+
+
 def test_codex_prompt_for_codex_runner_request_uses_runner_safety(tmp_path):
     orchestrator = build_orchestrator(tmp_path)
 

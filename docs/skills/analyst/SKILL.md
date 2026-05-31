@@ -11,6 +11,8 @@ Use this skill before building a Codex prompt. Its job is to understand the user
 2. Identify entities.
    - Examples: tasks, projects, project cards, task cards, buttons, statuses, archive, prompts, Codex Runner, Mac mini, Railway dashboard, tests, review, commit.
    - Keep entities separate. For example, "project tasks" is not the same entity as "task card".
+   - Treat "карточка проекта", "GitHub URL", "repo_url", "local_path", "описание проекта", and "задачи проекта" as project-management entities.
+   - Treat "карточка задачи", "TASK-ID", "этап задачи", and progress across prompt/Codex/tests/review/commit as task-card entities.
 
 3. Identify actions.
    - Examples: open, show, hide, create, add, click, confirm, filter, archive, limit, run, inspect.
@@ -45,4 +47,4 @@ Use this skill before building a Codex prompt. Its job is to understand the user
 
 ## Rule
 
-Do not use an unrelated template if the entities do not match the request. A request about project cards and project tasks must not receive task-card/archive behavior unless the user also asks for task cards or task archives.
+Do not use an unrelated template if the entities do not match the request. A request about project cards and project tasks must not receive task-card/archive behavior unless the user also asks for task cards or task archives. A phrase like "задачами проекта" means tasks filtered by project, not a generic task card.
