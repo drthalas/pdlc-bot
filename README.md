@@ -6,6 +6,12 @@ Version `0.1` creates local task artifacts and a Codex-ready prompt. Codex Runne
 
 The bot currently runs in prompt/artifact mode. Codex Runner is disabled by default; the future runner is specified in [docs/CODEX_RUNNER_V0.md](docs/CODEX_RUNNER_V0.md). See [docs/ROADMAP.md](docs/ROADMAP.md) for the broader PDLC roadmap.
 
+## Prompt Builder
+
+Users can write short development tasks in natural language. PDLC expands each request into a structured `codex_prompt.md` with project memory files, permanent project rules, suggested files to inspect, task-specific implementation steps, acceptance criteria, safety constraints, and verification commands.
+
+The prompt-building standard is documented in [docs/PROMPT_BUILDER.md](docs/PROMPT_BUILDER.md).
+
 ## Features
 
 - Telegram commands: `/start`, `/projects`, `/status`, `/tasks`, `/task <TASK-ID>`, `/prompt <TASK-ID>`

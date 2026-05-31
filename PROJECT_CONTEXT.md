@@ -9,7 +9,8 @@
 - `ProjectRegistry` loads configured projects and aliases from `config/projects.yaml`.
 - `TaskStore` persists task metadata in SQLite.
 - `TaskWorkspace` writes local task artifacts under `tasks/TASK-XXXX`.
-- Codex Runner is currently a safe skeleton. It can show disabled responses and prepare manual-run artifacts, but it does not execute Codex CLI.
+- Prompt Builder expands short Telegram requests into structured Codex prompts with project memory, task-specific plans, acceptance criteria, safety constraints, and verification commands.
+- Codex Runner is gated by feature flags and safe modes. It can prepare artifacts, check git state, create task branches, and run Codex CLI only through explicit user action. It still does not commit, push, create PRs, or deploy without approval.
 
 ## Runtime Split
 
@@ -23,7 +24,9 @@
 - Codex CLI is installed on Mac mini.
 - Codex Runner is disabled by default.
 - `prepare` and `branch_prepare` modes only write artifacts for manual inspection.
-- Current runner modes do not execute Codex CLI, create branches, commit, push, create PRs, or deploy.
+- `git_check` and `branch_create` add controlled git checks and branch creation.
+- `codex_run` can execute Codex CLI after explicit user action and writes task artifacts.
+- Runner modes do not commit, push, create PRs, or deploy without approval.
 
 ## Future Direction
 
