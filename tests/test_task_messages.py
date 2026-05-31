@@ -94,7 +94,7 @@ def test_task_artifacts_response_shows_files_separately(tmp_path):
 
     message = format_task_artifacts_response(record, artifacts=["input.md", "codex_prompt.md"])
 
-    assert message.startswith("🛠 Технические детали TASK-0001")
+    assert message.startswith("🛠 Детали TASK-0001")
     assert "Рабочая папка:" in message
     assert "- input.md" in message
     assert "- codex_prompt.md" in message

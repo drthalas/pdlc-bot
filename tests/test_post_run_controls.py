@@ -56,7 +56,7 @@ def test_show_diff_reads_diff_patch(tmp_path):
 
     message = build_show_diff_message(make_task(workspace))
 
-    assert "Diff for TASK-0013" in message
+    assert "Diff для TASK-0013" in message
     assert "diff --git a/app.py b/app.py" in message
 
 
@@ -176,7 +176,7 @@ def test_push_disabled_by_default(monkeypatch, tmp_path):
 
     assert is_git_push_enabled() is False
     assert result.ok is False
-    assert result.message == "Push is disabled by configuration."
+    assert result.message == "Push отключён в конфигурации."
     assert calls == []
 
 

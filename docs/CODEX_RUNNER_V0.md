@@ -25,8 +25,8 @@ After task creation, show:
 - `▶️ Run Codex`
 - `📄 Task details`
 - `🧠 Codex prompt`
-- `🗂 Последние задачи`
-- `🛠 Технические детали`
+- `🗂 Последние`
+- `🛠 Детали`
 
 When the user clicks `Run Codex`:
 
@@ -89,10 +89,10 @@ When the user clicks `Run Codex`:
 - Task UI is state-aware after Codex execution. If `codex_exit_code.txt` is `0`, `diff.patch` is non-empty, and `test_report.md` contains only passing exit codes, `/task`, `/prompt`, task details, and diff views show post-run controls instead of another Run Codex button.
 - After successful `codex_run`, Telegram shows:
   ```text
-  🔍 Показать diff
-  🧪 Запустить тесты ещё раз
-  ✅ Закоммитить изменения
-  🧹 Откатить изменения
+  🔍 Diff
+  🧪 Тесты
+  ✅ Коммит
+  🧹 Откат
   ```
 - `Show diff` reads the task artifact `diff.patch` and displays it in Telegram, truncated when needed. If the patch is missing, the bot falls back to available artifact context.
 - `Run tests again` is a placeholder and currently responds `Повторный запуск тестов пока не реализован.`
@@ -197,10 +197,10 @@ After execution, send a summary:
 
 Next buttons:
 
-- `🔍 Показать diff`
-- `🧪 Запустить тесты ещё раз`
-- `✅ Закоммитить изменения`
-- `🧹 Откатить изменения`
+- `🔍 Diff`
+- `🧪 Тесты`
+- `✅ Коммит`
+- `🧹 Откат`
 
 After confirmed commit succeeds:
 

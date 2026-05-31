@@ -31,6 +31,7 @@ from app.telegram_ui import (
     build_project_details_keyboard,
     build_project_details_message,
     build_project_keyboard,
+    build_project_task_buttons,
     build_project_tasks_keyboard,
     build_project_tasks_message,
     build_push_confirm_keyboard,
@@ -312,7 +313,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     if data == "runbook:show":
-        await query.edit_message_text(build_runbook_message())
+        await query.edit_message_text(build_runbook_message(), reply_markup=build_main_menu_keyboard())
         return
 
     if data.startswith("project:show:"):
@@ -337,7 +338,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         records = orchestrator.store.list_tasks(limit=PROJECT_TASKS_QUERY_LIMIT)
         await query.edit_message_text(
             build_project_tasks_message(project, records),
-            reply_markup=build_project_tasks_keyboard(project),
+            reply_markup=build_project_task_buttons(project, records),
         )
         return
 
@@ -453,7 +454,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.edit_message_text(f"Задача {task_id} не найдена.")
             return
         await query.edit_message_text(
-            f"Отправить branch для {task_id}?\n\nБудет выполнено `git push -u origin <branch>`.",
+            f"Сделать Push для {task_id}?\n\nБудет выполнено `git push -u origin <branch>`.",
             reply_markup=build_push_confirm_keyboard(task_id),
         )
         return

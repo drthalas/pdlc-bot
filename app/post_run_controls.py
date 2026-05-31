@@ -99,17 +99,17 @@ def build_show_diff_message(task: TaskRecord, max_chars: int = 3500) -> str:
     diff = _read_text(workspace / "diff.patch").strip()
     if diff:
         if len(diff) > max_chars:
-            diff = f"{diff[:max_chars]}\n\n... truncated. Full diff: {workspace / 'diff.patch'}"
-        return f"Diff for {task.task_id}:\n\n```diff\n{diff}\n```"
+            diff = f"{diff[:max_chars]}\n\n... обрезано. Полный diff: {workspace / 'diff.patch'}"
+        return f"Diff для {task.task_id}:\n\n```diff\n{diff}\n```"
 
     developer_report = _read_text(workspace / "developer_report.md").strip()
     if developer_report:
         diff_stat_match = re.search(r"## Diff Stat\s+```text\s+(.*?)\s+```", developer_report, flags=re.DOTALL)
         if diff_stat_match is not None:
             diff_stat = diff_stat_match.group(1).strip() or "no diff"
-            return f"No diff.patch content found for {task.task_id}. Diff stat:\n\n```text\n{diff_stat[:max_chars]}\n```"
-        return f"No diff.patch content found for {task.task_id}. Developer report:\n\n{developer_report[:max_chars]}"
-    return f"No diff artifact found for {task.task_id}."
+            return f"diff.patch для {task.task_id} пустой или отсутствует. Diff stat:\n\n```text\n{diff_stat[:max_chars]}\n```"
+        return f"diff.patch для {task.task_id} пустой или отсутствует. Developer report:\n\n{developer_report[:max_chars]}"
+    return f"Diff artifact для {task.task_id} не найден."
 
 
 def build_commit_message(task: TaskRecord, max_title_chars: int = 50) -> str:
@@ -246,7 +246,7 @@ def commit_task_changes(
         detail = commit_result.stderr.strip() or commit_result.stdout.strip() or f"exit code {commit_result.returncode}"
         return PostRunActionResult(False, f"git commit failed: {detail}", branch_name=branch_name)
 
-    return PostRunActionResult(True, f"Committed local changes on {branch_name}.\nMessage: {message}", branch_name=branch_name)
+    return PostRunActionResult(True, f"Локальный commit создан на {branch_name}.\nСообщение: {message}", branch_name=branch_name)
 
 
 def push_task_branch(
@@ -254,7 +254,7 @@ def push_task_branch(
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> PostRunActionResult:
     if not is_git_push_enabled():
-        return PostRunActionResult(False, "Push is disabled by configuration.")
+        return PostRunActionResult(False, "Push отключён в конфигурации.")
 
     project_local_path, branch_name, error = _validate_project_and_branch(task, runner)
     if error is not None:
@@ -266,7 +266,7 @@ def push_task_branch(
     if push_result.returncode != 0:
         detail = push_result.stderr.strip() or push_result.stdout.strip() or f"exit code {push_result.returncode}"
         return PostRunActionResult(False, f"git push failed: {detail}", branch_name=branch_name)
-    return PostRunActionResult(True, f"Pushed branch {branch_name}.", branch_name=branch_name)
+    return PostRunActionResult(True, f"Branch {branch_name} отправлен.", branch_name=branch_name)
 
 
 def discard_task_changes(
@@ -289,4 +289,4 @@ def discard_task_changes(
         detail = checkout_result.stderr.strip() or checkout_result.stdout.strip() or f"exit code {checkout_result.returncode}"
         return PostRunActionResult(False, f"git checkout main failed: {detail}", branch_name=branch_name)
 
-    return PostRunActionResult(True, f"Discarded local changes from {branch_name} and checked out main.", branch_name=branch_name)
+    return PostRunActionResult(True, f"Локальные изменения из {branch_name} откатаны, выполнен checkout main.", branch_name=branch_name)

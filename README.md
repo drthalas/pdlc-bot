@@ -135,10 +135,10 @@ The bottom menu is for navigation and remains available while using the bot. Inl
 
 - `/start` opens the main menu.
 - `/projects` lists configured projects with descriptions, GitHub URLs, local status, task counts, project cards, and a safe `Добавить проект` stub.
-- `/tasks` shows up to 10 recent tasks with short titles from `input.md`.
-- Older tasks are available from the `📦 Архив задач` inline button.
+- `/tasks` shows up to 10 recent tasks as readable text entries with short task buttons like `🟡 TASK-0025`.
+- Older tasks are available from the `📦 Архив` inline button.
 - `/task TASK-ID` shows a user-friendly task card: title, project, status, current stage, progress checklist, and available next actions.
-- Technical artifacts are hidden from the default task card and shown through `🛠 Технические детали`.
+- Technical artifacts are hidden from the default task card and shown through `🛠 Детали`.
 - New task responses include buttons for task details, Codex prompt, technical details, and recent tasks.
 
 The slash commands `/start`, `/projects`, `/status`, `/tasks`, `/task TASK-ID`, and `/prompt TASK-ID` remain available for direct lookup.
@@ -217,10 +217,10 @@ Task UI is state-aware after a Codex run. If `codex_exit_code.txt` is `0`, `diff
 
 After a successful `codex_run` with a non-empty `diff.patch` and passing tests, Telegram shows post-run controls:
 
-- `🔍 Показать diff`: displays `diff.patch` from the task artifacts, truncated for Telegram when needed.
-- `🧪 Запустить тесты ещё раз`: currently returns `Повторный запуск тестов пока не реализован.`
-- `✅ Закоммитить изменения`: asks for confirmation before running a local commit.
-- `🧹 Откатить изменения`: asks for confirmation before discarding the branch changes.
+- `🔍 Diff`: displays `diff.patch` from the task artifacts, truncated for Telegram when needed.
+- `🧪 Тесты`: currently returns `Повторный запуск тестов пока не реализован.`
+- `✅ Коммит`: asks for confirmation before running a local commit.
+- `🧹 Откат`: asks for confirmation before discarding the branch changes.
 
 Commit, push, and discard are intentionally separate steps. Confirm commit only runs on the current `agent/TASK-*` branch matching the task artifact, stages only allowed changed files explicitly, then creates a local commit with message `TASK-XXXX: <short task title>`. It does not push. After a successful commit, Telegram shows a separate `📤 Push branch` button. Push is disabled by default with `PDLC_ENABLE_GIT_PUSH=false`. When enabled with `PDLC_ENABLE_GIT_PUSH=true`, push still requires confirmation and runs only `git push -u origin <branch>`. Discard also requires confirmation and runs `git reset --hard` followed by `git checkout main`, only from the matching `agent/TASK-*` branch.
 

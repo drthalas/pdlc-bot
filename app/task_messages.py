@@ -188,7 +188,7 @@ def format_task_artifacts_response(record: TaskRecord, artifacts: list[str]) -> 
         artifact_lines = "\n".join(f"- {artifact}" for artifact in artifacts)
     else:
         artifact_lines = "Технические файлы не найдены."
-    return f"🛠 Технические детали {record.task_id}\n\nРабочая папка: {record.workspace_path}\n\nФайлы:\n{artifact_lines}"
+    return f"🛠 Детали {record.task_id}\n\nРабочая папка: {record.workspace_path}\n\nФайлы:\n{artifact_lines}"
 
 
 def build_prompt_response(
