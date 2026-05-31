@@ -146,11 +146,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
-    keyboard = build_recent_tasks_keyboard(records)
-    await update.message.reply_text(
-        build_status_message(records),
-        reply_markup=keyboard or build_persistent_menu_keyboard(),
-    )
+    await _reply_task_list(update, records, use_status_message=True)
 
 
 async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -158,9 +154,14 @@ async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
     records = orchestrator.store.list_tasks(limit=RECENT_TASKS_QUERY_LIMIT)
+    await _reply_task_list(update, records)
+
+
+async def _reply_task_list(update: Update, records, use_status_message: bool = False) -> None:
     keyboard = build_recent_tasks_keyboard(records)
+    message = build_status_message(records) if use_status_message else build_recent_tasks_message(records)
     await update.message.reply_text(
-        build_recent_tasks_message(records),
+        message,
         reply_markup=keyboard or build_persistent_menu_keyboard(),
     )
 

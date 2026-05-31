@@ -319,6 +319,27 @@ def test_status_command_sends_text_list_and_inline_keyboard_together(monkeypatch
     assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
 
 
+def test_tasks_command_live_scenario_shows_titles_status_and_archive_button(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    records = [
+        make_task_with_input(tmp_path, f"TASK-{index:04d}", f"В pdlc-bot задача номер {index}")
+        for index in range(12, 0, -1)
+    ]
+    update = FakeUpdate("/tasks")
+
+    asyncio.run(tasks(update, FakeContext(RecordingOrchestrator(records=records))))
+
+    reply = update.message.replies[0]
+    assert len(update.message.replies) == 1
+    assert "Действия с задачами:" not in reply["text"]
+    assert "⚪ TASK-0012 — pdlc-bot" in reply["text"]
+    assert "задача номер 12" in reply["text"]
+    assert "Статус:" in reply["text"]
+    assert "TASK-0002" not in reply["text"]
+    assert "📦 Архив" in button_text(reply["reply_markup"])
+    assert all("задача номер" not in text for text in button_text(reply["reply_markup"]))
+
+
 def test_main_menu_keyboard_contains_runbook_action():
     markup = build_main_menu_keyboard()
 
@@ -641,9 +662,33 @@ def test_archive_callback_shows_older_tasks(monkeypatch, tmp_path):
     asyncio.run(handle_callback(update, make_records_callback_context(records)))
 
     text = update.callback_query.edits[-1]["text"]
+    markup = update.callback_query.edits[-1]["reply_markup"]
     assert "📦 Архив задач:" in text
-    assert "TASK-0002" in text
+    assert "⚪ TASK-0002 — pdlc-bot" in text
+    assert "задача 2" in text
+    assert "Статус:" in text
     assert "TASK-0012" not in text
+    assert "⚪ TASK-0002" in button_text(markup)
+    assert "task:details:TASK-0002" in button_data(markup)
+    assert all("задача" not in label for label in button_text(markup))
+
+
+def test_recent_tasks_callback_sends_text_list_and_short_buttons(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    records = [
+        make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot улучшить список задач"),
+        make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot добавить кнопку"),
+    ]
+    update = FakeCallbackUpdate("tasks:recent")
+
+    asyncio.run(handle_callback(update, make_records_callback_context(records)))
+
+    edit = update.callback_query.edits[-1]
+    assert "Действия с задачами:" not in edit["text"]
+    assert "⚪ TASK-0002 — pdlc-bot" in edit["text"]
+    assert "улучшить список задач" in edit["text"]
+    assert "Статус:" in edit["text"]
+    assert button_text(edit["reply_markup"]) == ["⚪ TASK-0002", "⚪ TASK-0001", "🏠 Меню"]
 
 
 def test_task_command_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_path):
