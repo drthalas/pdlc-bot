@@ -18,13 +18,21 @@ PROJECTS_BUTTON = "📋 Проекты"
 TASKS_BUTTON = "🗂 Задачи"
 STATUS_BUTTON = "ℹ️ Статус"
 RUNBOOK_BUTTON = "📘 Runbook"
+LEGACY_MENU_BUTTON = "🏠 Menu"
+LEGACY_PROJECTS_BUTTON = "📋 Projects"
+LEGACY_TASKS_BUTTON = "🗂 Tasks"
+LEGACY_STATUS_BUTTON = "ℹ️ Status"
 RECENT_TASKS_LIMIT = 10
 
 MENU_ACTIONS = {
     MENU_BUTTON: "menu",
+    LEGACY_MENU_BUTTON: "menu",
     PROJECTS_BUTTON: "projects",
+    LEGACY_PROJECTS_BUTTON: "projects",
     TASKS_BUTTON: "tasks",
+    LEGACY_TASKS_BUTTON: "tasks",
     STATUS_BUTTON: "status",
+    LEGACY_STATUS_BUTTON: "status",
     RUNBOOK_BUTTON: "runbook",
 }
 

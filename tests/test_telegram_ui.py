@@ -17,6 +17,10 @@ from app.telegram_ui import (
     RUNBOOK_BUTTON,
     STATUS_BUTTON,
     TASKS_BUTTON,
+    LEGACY_MENU_BUTTON,
+    LEGACY_PROJECTS_BUTTON,
+    LEGACY_STATUS_BUTTON,
+    LEGACY_TASKS_BUTTON,
     build_archived_tasks_keyboard,
     build_archived_tasks_message,
     build_codex_post_run_keyboard,
@@ -93,10 +97,20 @@ class FakeUpdate:
 
 
 class FakeContext:
-    class Application:
-        bot_data = {"orchestrator": object()}
+    def __init__(self, orchestrator=None):
+        self.application = SimpleNamespace(bot_data={"orchestrator": orchestrator or object()})
 
-    application = Application()
+class RecordingOrchestrator:
+    def __init__(self, records: list[TaskRecord] | None = None):
+        self.created_texts = []
+        self.store = FakeStore(records[0], records=records) if records else None
+
+    def create_task(self, text: str):
+        self.created_texts.append(text)
+        return SimpleNamespace(
+            response_text="created",
+            record=TaskRecord("TASK-9999", "pdlc-bot", "prompt_ready", "tasks/TASK-9999", "2026-05-30T00:00:00+00:00"),
+        )
 
 
 class FakeCallbackQuery:
@@ -189,11 +203,50 @@ def test_persistent_menu_keyboard_contains_navigation_buttons():
 
 def test_get_menu_action_recognizes_menu_buttons():
     assert get_menu_action(MENU_BUTTON) == "menu"
+    assert get_menu_action(LEGACY_MENU_BUTTON) == "menu"
     assert get_menu_action(PROJECTS_BUTTON) == "projects"
+    assert get_menu_action(LEGACY_PROJECTS_BUTTON) == "projects"
     assert get_menu_action(TASKS_BUTTON) == "tasks"
+    assert get_menu_action(LEGACY_TASKS_BUTTON) == "tasks"
     assert get_menu_action(STATUS_BUTTON) == "status"
+    assert get_menu_action(LEGACY_STATUS_BUTTON) == "status"
     assert get_menu_action(RUNBOOK_BUTTON) == "runbook"
     assert get_menu_action("В pdlc-bot добавь кнопку") is None
+
+
+def test_handle_text_routes_legacy_tasks_button_without_creating_task(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    records = [make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot тестовая задача")]
+    orchestrator = RecordingOrchestrator(records=records)
+    update = FakeUpdate(LEGACY_TASKS_BUTTON)
+
+    asyncio.run(handle_text(update, FakeContext(orchestrator)))
+
+    assert orchestrator.created_texts == []
+    assert "Последние задачи:" in update.message.replies[0]["text"]
+
+
+def test_handle_text_routes_new_tasks_button_without_creating_task(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    records = [make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot тестовая задача")]
+    orchestrator = RecordingOrchestrator(records=records)
+    update = FakeUpdate(TASKS_BUTTON)
+
+    asyncio.run(handle_text(update, FakeContext(orchestrator)))
+
+    assert orchestrator.created_texts == []
+    assert "Последние задачи:" in update.message.replies[0]["text"]
+
+
+def test_handle_text_regular_text_still_creates_task(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    orchestrator = RecordingOrchestrator()
+    update = FakeUpdate("В pdlc-bot добавь кнопку")
+
+    asyncio.run(handle_text(update, FakeContext(orchestrator)))
+
+    assert orchestrator.created_texts == ["В pdlc-bot добавь кнопку"]
+    assert update.message.replies[0]["text"] == "created"
 
 
 def test_main_menu_keyboard_contains_runbook_action():
