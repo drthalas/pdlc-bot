@@ -26,6 +26,7 @@ LEGACY_TASKS_BUTTON = "🗂 Tasks"
 LEGACY_STATUS_BUTTON = "ℹ️ Status"
 RECENT_TASKS_LIMIT = 10
 PROJECT_TASKS_PREVIEW_LIMIT = 5
+TASK_BUTTON_TITLE_LIMIT = 40
 LONG_BUTTON_LABELS = (
     "Показать diff",
     "Запустить тесты ещё раз",
@@ -282,26 +283,21 @@ def _has_archive(tasks: list[TaskRecord]) -> bool:
     return len(tasks) > RECENT_TASKS_LIMIT
 
 
+def build_task_button_label(task: TaskRecord) -> str:
+    status_emoji = task_status_display(task)[0]
+    title = task_title(task, limit=TASK_BUTTON_TITLE_LIMIT)
+    if title == task.task_id:
+        return f"{status_emoji} {task.task_id}"
+    return f"{status_emoji} {task.task_id} — {title}"
+
+
 def build_recent_tasks_message(tasks: list[TaskRecord]) -> str:
     if not tasks:
         return "Задачи ещё не созданы."
 
-    lines = ["🗂 Последние задачи:", ""]
-    for task in _visible_recent_tasks(tasks):
-        status_emoji, status_label = task_status_display(task)
-        project_name = task.project_name or "не определён"
-        lines.extend(
-            [
-                f"{status_emoji} {task.task_id} — {project_name}",
-                task_title(task),
-                f"Статус: {status_label}",
-                "",
-            ]
-        )
+    lines = ["🗂 Последние задачи", "", "Открой задачу кнопкой ниже."]
     if _has_archive(tasks):
         lines.append("Более старые задачи доступны в архиве.")
-    else:
-        lines.pop()
     return "\n".join(lines)
 
 
@@ -309,7 +305,7 @@ def build_recent_tasks_keyboard(tasks: list[TaskRecord], include_archive: bool |
     if not tasks:
         return None
     rows = [
-        [InlineKeyboardButton(f"{task_status_display(task)[0]} {task.task_id}", callback_data=f"task:details:{task.task_id}")]
+        [InlineKeyboardButton(build_task_button_label(task), callback_data=f"task:details:{task.task_id}")]
         for task in _visible_recent_tasks(tasks)
     ]
     if include_archive is None:
@@ -326,25 +322,12 @@ def build_archived_tasks_message(tasks: list[TaskRecord]) -> str:
     if not tasks:
         return "В архиве пока нет задач."
 
-    lines = ["📦 Архив задач:", ""]
-    for task in tasks:
-        status_emoji, status_label = task_status_display(task)
-        project_name = task.project_name or "не определён"
-        lines.extend(
-            [
-                f"{status_emoji} {task.task_id} — {project_name}",
-                task_title(task),
-                f"Статус: {status_label}",
-                "",
-            ]
-        )
-    lines.pop()
-    return "\n".join(lines)
+    return "📦 Архив задач\n\nОткрой задачу кнопкой ниже."
 
 
 def build_archived_tasks_keyboard(tasks: list[TaskRecord]) -> InlineKeyboardMarkup | None:
     rows = [
-        [InlineKeyboardButton(f"{task_status_display(task)[0]} {task.task_id}", callback_data=f"task:details:{task.task_id}")]
+        [InlineKeyboardButton(build_task_button_label(task), callback_data=f"task:details:{task.task_id}")]
         for task in tasks
     ]
     rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="tasks:recent")])
@@ -420,18 +403,9 @@ def build_project_details_message(project: Project, tasks: list[TaskRecord] | No
         f"Стек: {stack}",
         f"Задач: {len(project_tasks)}",
         "",
-        "Последние задачи проекта:",
+        "Задачи проекта открываются кнопкой ниже.",
     ]
-    if project_tasks:
-        for task in project_tasks[:PROJECT_TASKS_PREVIEW_LIMIT]:
-            status_emoji, status_label = task_status_display(task)
-            lines.extend(
-                [
-                    f"- {status_emoji} {task.task_id} — {task_title(task)}",
-                    f"  Статус: {status_label}",
-                ]
-            )
-    else:
+    if not project_tasks:
         lines.append("Задач для этого проекта пока нет.")
     return "\n".join(lines)
 
@@ -456,19 +430,7 @@ def build_project_tasks_message(project: Project, tasks: list[TaskRecord] | None
     if not project_tasks:
         return f"Для проекта {project.name} пока нет задач."
 
-    lines = [f"🗂 Задачи проекта {project.name}:", ""]
-    for task in project_tasks:
-        status_emoji, status_label = task_status_display(task)
-        lines.extend(
-            [
-                f"{status_emoji} {task.task_id} — {project.name}",
-                task_title(task),
-                f"Статус: {status_label}",
-                "",
-            ]
-        )
-    lines.pop()
-    return "\n".join(lines)
+    return f"🗂 Задачи проекта {project.name}\n\nОткрой задачу кнопкой ниже."
 
 
 def build_project_tasks_keyboard(project: Project) -> InlineKeyboardMarkup:
@@ -484,7 +446,7 @@ def build_project_tasks_keyboard(project: Project) -> InlineKeyboardMarkup:
 def build_project_task_buttons(project: Project, tasks: list[TaskRecord] | None = None) -> InlineKeyboardMarkup:
     project_tasks = _project_tasks(project, tasks)
     rows = [
-        [InlineKeyboardButton(f"{task_status_display(task)[0]} {task.task_id}", callback_data=f"task:details:{task.task_id}")]
+        [InlineKeyboardButton(build_task_button_label(task), callback_data=f"task:details:{task.task_id}")]
         for task in project_tasks
     ]
     rows.extend(build_project_tasks_keyboard(project).inline_keyboard)

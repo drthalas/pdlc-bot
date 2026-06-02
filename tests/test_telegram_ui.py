@@ -46,6 +46,7 @@ from app.telegram_ui import (
     build_start_message,
     build_task_action_keyboard,
     build_task_actions_keyboard,
+    build_task_button_label,
     build_task_subview_keyboard,
     get_menu_action,
 )
@@ -92,14 +93,14 @@ def assert_readable_task_list_payload(payload, task_id: str, title: str) -> None
 
     assert text.strip() != "Действия с задачами:"
     assert "Действия с задачами:" not in text
-    assert f"{task_id} — pdlc-bot" in text
-    assert title in text
-    assert "Статус:" in text
+    assert "Открой задачу кнопкой ниже." in text
+    assert f"{task_id} — pdlc-bot" not in text
+    assert title not in text
     assert markup is not None
     labels = button_text(markup)
     data = button_data(markup)
-    assert any(label.endswith(task_id) for label in labels)
-    assert all(title not in label for label in labels)
+    assert any(label.startswith(f"⚪ {task_id} — ") for label in labels)
+    assert any(title in label for label in labels)
     assert all(len(item.encode("utf-8")) <= 64 for item in data)
 
 
@@ -285,9 +286,9 @@ def test_handle_text_routes_legacy_tasks_button_without_creating_task(monkeypatc
 
     assert orchestrator.created_texts == []
     assert len(update.message.replies) == 1
-    assert "🗂 Последние задачи:" in update.message.replies[0]["text"]
-    assert "тестовая задача" in update.message.replies[0]["text"]
-    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
+    assert "🗂 Последние задачи" in update.message.replies[0]["text"]
+    assert "тестовая задача" not in update.message.replies[0]["text"]
+    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001 — тестовая задача", "🏠 Меню"]
 
 
 def test_handle_text_routes_new_tasks_button_without_creating_task(monkeypatch, tmp_path):
@@ -300,9 +301,9 @@ def test_handle_text_routes_new_tasks_button_without_creating_task(monkeypatch, 
 
     assert orchestrator.created_texts == []
     assert len(update.message.replies) == 1
-    assert "🗂 Последние задачи:" in update.message.replies[0]["text"]
-    assert "тестовая задача" in update.message.replies[0]["text"]
-    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
+    assert "🗂 Последние задачи" in update.message.replies[0]["text"]
+    assert "тестовая задача" not in update.message.replies[0]["text"]
+    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001 — тестовая задача", "🏠 Меню"]
 
 
 def test_handle_text_regular_text_still_creates_task(monkeypatch):
@@ -324,11 +325,9 @@ def test_tasks_command_sends_text_list_and_inline_keyboard_together(monkeypatch,
     asyncio.run(tasks(update, FakeContext(RecordingOrchestrator(records=records))))
 
     assert len(update.message.replies) == 1
-    assert "🗂 Последние задачи:" in update.message.replies[0]["text"]
-    assert "⚪ TASK-0001 — pdlc-bot" in update.message.replies[0]["text"]
-    assert "улучшить список задач" in update.message.replies[0]["text"]
-    assert "Статус:" in update.message.replies[0]["text"]
-    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
+    assert "🗂 Последние задачи" in update.message.replies[0]["text"]
+    assert "улучшить список задач" not in update.message.replies[0]["text"]
+    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001 — улучшить список задач", "🏠 Меню"]
 
 
 def test_status_command_sends_text_list_and_inline_keyboard_together(monkeypatch, tmp_path):
@@ -339,8 +338,8 @@ def test_status_command_sends_text_list_and_inline_keyboard_together(monkeypatch
     asyncio.run(status(update, FakeContext(RecordingOrchestrator(records=records))))
 
     assert len(update.message.replies) == 1
-    assert "⚪ TASK-0001 — pdlc-bot" in update.message.replies[0]["text"]
-    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001", "🏠 Меню"]
+    assert "проверить статус" not in update.message.replies[0]["text"]
+    assert button_text(update.message.replies[0]["reply_markup"]) == ["⚪ TASK-0001 — проверить статус", "🏠 Меню"]
 
 
 def test_tasks_command_live_scenario_shows_titles_status_and_archive_button(monkeypatch, tmp_path):
@@ -356,12 +355,13 @@ def test_tasks_command_live_scenario_shows_titles_status_and_archive_button(monk
     reply = update.message.replies[0]
     assert len(update.message.replies) == 1
     assert "Действия с задачами:" not in reply["text"]
-    assert "⚪ TASK-0012 — pdlc-bot" in reply["text"]
-    assert "задача номер 12" in reply["text"]
-    assert "Статус:" in reply["text"]
+    assert "TASK-0012 — pdlc-bot" not in reply["text"]
+    assert "задача номер 12" not in reply["text"]
+    assert "Статус:" not in reply["text"]
     assert "TASK-0002" not in reply["text"]
     assert "📦 Архив" in button_text(reply["reply_markup"])
-    assert all("задача номер" not in text for text in button_text(reply["reply_markup"]))
+    assert "⚪ TASK-0012 — задача номер 12" in button_text(reply["reply_markup"])
+    assert all("задача номер" in text or not text.startswith("⚪ TASK-") for text in button_text(reply["reply_markup"]))
 
 
 def test_live_task_list_routes_all_send_readable_text(monkeypatch, tmp_path):
@@ -484,13 +484,11 @@ def test_recent_tasks_message_with_tasks(tmp_path):
     second = make_task_with_input(tmp_path, "TASK-0001", "pdlc-bot добавить кнопки")
 
     message = build_recent_tasks_message([first, second])
+    markup = build_recent_tasks_keyboard([first, second])
 
-    assert "🗂 Последние задачи:" in message
-    assert "⚪ TASK-0002 — pdlc-bot" in message
-    assert "улучши генерацию prompt и список задач" in message
-    assert "Статус: prompt готов" in message
-    assert "⚪ TASK-0001" in message
-    assert "добавить кнопки" in message
+    assert message == "🗂 Последние задачи\n\nОткрой задачу кнопкой ниже."
+    assert "⚪ TASK-0002 — улучши генерацию prompt и список задач" in button_text(markup)
+    assert "⚪ TASK-0001 — добавить кнопки" in button_text(markup)
 
 
 def test_recent_tasks_message_without_tasks():
@@ -507,18 +505,34 @@ def test_recent_tasks_message_missing_input_falls_back_to_task_id(tmp_path):
         str(workspace),
         "2026-05-30T00:00:00+00:00",
     )
-    message = build_recent_tasks_message([record])
+    markup = build_recent_tasks_keyboard([record])
 
-    assert "⚪ TASK-0002" in message
-    assert "TASK-0002" in message
+    assert button_text(markup) == ["⚪ TASK-0002", "🏠 Меню"]
 
 
 def test_recent_tasks_message_truncates_long_title(tmp_path):
     record = make_task_with_input(tmp_path, "TASK-0002", "В pdlc-bot " + "очень " * 30)
 
-    message = build_recent_tasks_message([record])
+    markup = build_recent_tasks_keyboard([record])
 
-    assert "…" in message
+    assert "…" in button_text(markup)[0]
+    assert len(button_text(markup)[0]) < len("⚪ TASK-0002 — " + "очень " * 30)
+
+
+def test_task_button_label_includes_short_title_or_falls_back_to_id(tmp_path):
+    titled = make_task_with_input(tmp_path, "TASK-0025", "В pdlc-bot UX списка задач")
+    missing_input_workspace = tmp_path / "TASK-0024"
+    missing_input_workspace.mkdir()
+    missing = TaskRecord(
+        "TASK-0024",
+        "pdlc-bot",
+        "prompt_ready",
+        str(missing_input_workspace),
+        "2026-05-30T00:00:00+00:00",
+    )
+
+    assert build_task_button_label(titled) == "⚪ TASK-0025 — UX списка задач"
+    assert build_task_button_label(missing) == "⚪ TASK-0024"
 
 
 def test_recent_tasks_message_limits_to_ten_and_mentions_archive(tmp_path):
@@ -530,12 +544,14 @@ def test_recent_tasks_message_limits_to_ten_and_mentions_archive(tmp_path):
     message = build_recent_tasks_message(records)
     markup = build_recent_tasks_keyboard(records)
 
-    assert "TASK-0012" in message
-    assert "TASK-0003" in message
+    assert "TASK-0012" not in message
+    assert "TASK-0003" not in message
     assert "TASK-0002" not in message
     assert "Более старые задачи доступны в архиве." in message
     assert "📦 Архив" in button_text(markup)
     assert "tasks:archive" in button_data(markup)
+    assert "⚪ TASK-0012 — задача 12" in button_text(markup)
+    assert "⚪ TASK-0003 — задача 3" in button_text(markup)
     assert len([text for text in button_text(markup) if text.startswith("⚪ TASK-")]) == 10
 
 
@@ -548,9 +564,9 @@ def test_archived_tasks_message_and_keyboard_show_older_tasks(tmp_path):
     message = build_archived_tasks_message(records)
     markup = build_archived_tasks_keyboard(records)
 
-    assert "📦 Архив задач:" in message
-    assert "⚪ TASK-0002 — pdlc-bot" in message
-    assert "старая задача" in message
+    assert message == "📦 Архив задач\n\nОткрой задачу кнопкой ниже."
+    assert "⚪ TASK-0002 — старая задача" in button_text(markup)
+    assert "⚪ TASK-0001 — самая старая задача" in button_text(markup)
     assert "🗂 Последние" in button_text(markup)
     assert "⬅️ Назад" in button_text(markup)
     assert "🏠 Меню" in button_text(markup)
@@ -717,14 +733,12 @@ def test_archive_callback_shows_older_tasks(monkeypatch, tmp_path):
 
     text = update.callback_query.edits[-1]["text"]
     markup = update.callback_query.edits[-1]["reply_markup"]
-    assert "📦 Архив задач:" in text
-    assert "⚪ TASK-0002 — pdlc-bot" in text
-    assert "задача 2" in text
-    assert "Статус:" in text
+    assert text == "📦 Архив задач\n\nОткрой задачу кнопкой ниже."
+    assert "задача 2" not in text
+    assert "Статус:" not in text
     assert "TASK-0012" not in text
-    assert "⚪ TASK-0002" in button_text(markup)
+    assert "⚪ TASK-0002 — задача 2" in button_text(markup)
     assert "task:details:TASK-0002" in button_data(markup)
-    assert all("задача" not in label for label in button_text(markup))
     assert all(len(item.encode("utf-8")) <= 64 for item in button_data(markup))
 
 
@@ -740,10 +754,13 @@ def test_recent_tasks_callback_sends_text_list_and_short_buttons(monkeypatch, tm
 
     edit = update.callback_query.edits[-1]
     assert "Действия с задачами:" not in edit["text"]
-    assert "⚪ TASK-0002 — pdlc-bot" in edit["text"]
-    assert "улучшить список задач" in edit["text"]
-    assert "Статус:" in edit["text"]
-    assert button_text(edit["reply_markup"]) == ["⚪ TASK-0002", "⚪ TASK-0001", "🏠 Меню"]
+    assert "улучшить список задач" not in edit["text"]
+    assert "Статус:" not in edit["text"]
+    assert button_text(edit["reply_markup"]) == [
+        "⚪ TASK-0002 — улучшить список задач",
+        "⚪ TASK-0001 — добавить кнопку",
+        "🏠 Меню",
+    ]
 
 
 def test_task_command_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_path):
@@ -853,7 +870,11 @@ def test_recent_tasks_keyboard_contains_task_buttons(tmp_path):
     second = make_task_with_input(tmp_path, "TASK-0001", "В pdlc-bot добавить кнопки")
     markup = build_recent_tasks_keyboard([first, second])
 
-    assert button_text(markup) == ["⚪ TASK-0002", "⚪ TASK-0001", "🏠 Меню"]
+    assert button_text(markup) == [
+        "⚪ TASK-0002 — улучшить список задач",
+        "⚪ TASK-0001 — добавить кнопки",
+        "🏠 Меню",
+    ]
     assert button_data(markup) == ["task:details:TASK-0002", "task:details:TASK-0001", "menu:show"]
 
 
@@ -921,7 +942,8 @@ def test_project_details_message(tmp_path):
     assert "Алиасы: pdlc, бот задач" in message
     assert "Стек: Python, Telegram Bot, SQLite" in message
     assert "Задач: 1" in message
-    assert "TASK-0002 — добавь карточку проекта" in message
+    assert "Задачи проекта открываются кнопкой ниже." in message
+    assert "TASK-0002 — добавь карточку проекта" not in message
 
 
 def test_project_details_keyboard_contains_expected_actions():
@@ -942,9 +964,9 @@ def test_project_tasks_message_filters_by_project(tmp_path):
 
     message = build_project_tasks_message(Project(name="pdlc-bot"), [pdlc_task, other_task])
 
-    assert "🗂 Задачи проекта pdlc-bot:" in message
-    assert "⚪ TASK-0002 — pdlc-bot" in message
-    assert "добавить GitHub URL" in message
+    assert "🗂 Задачи проекта pdlc-bot" in message
+    assert "Открой задачу кнопкой ниже." in message
+    assert "добавить GitHub URL" not in message
     assert "TASK-0001" not in message
     assert button_data(build_project_tasks_keyboard(Project(name="pdlc-bot"))) == [
         "project:show:pdlc-bot",
@@ -957,6 +979,9 @@ def test_project_tasks_message_filters_by_project(tmp_path):
         "projects:show",
         "menu:show",
     ]
+    assert "⚪ TASK-0002 — добавить GitHub URL" in button_text(
+        build_project_task_buttons(Project(name="pdlc-bot"), [pdlc_task, other_task])
+    )
 
 
 def test_add_project_stub_is_safe():
@@ -986,8 +1011,8 @@ def test_project_callbacks_show_card_tasks_and_safe_add_stub(monkeypatch, tmp_pa
 
     tasks_update = FakeCallbackUpdate("project:tasks:pdlc-bot")
     asyncio.run(handle_callback(tasks_update, make_project_callback_context([project], records)))
-    assert "🗂 Задачи проекта pdlc-bot:" in tasks_update.callback_query.edits[-1]["text"]
-    assert "⚪ TASK-0002" in button_text(tasks_update.callback_query.edits[-1]["reply_markup"])
+    assert "🗂 Задачи проекта pdlc-bot" in tasks_update.callback_query.edits[-1]["text"]
+    assert "⚪ TASK-0002 — добавить проекты" in button_text(tasks_update.callback_query.edits[-1]["reply_markup"])
 
     add_update = FakeCallbackUpdate("projects:add")
     asyncio.run(handle_callback(add_update, make_project_callback_context([project], records)))
