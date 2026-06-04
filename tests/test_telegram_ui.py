@@ -10,7 +10,7 @@ from app.post_run_controls import (
     task_result_state,
 )
 from app.task_store import TaskRecord
-from app.telegram_bot import handle_callback, handle_text, prompt, status, task, tasks
+from app.telegram_bot import fix, handle_callback, handle_text, prompt, status, task, tasks
 from app.telegram_ui import (
     LONG_BUTTON_LABELS,
     MENU_BUTTON,
@@ -29,6 +29,7 @@ from app.telegram_ui import (
     build_codex_post_run_keyboard,
     build_commit_confirm_keyboard,
     build_discard_confirm_keyboard,
+    build_fix_prompt_ready_keyboard,
     build_main_menu_keyboard,
     build_persistent_menu_keyboard,
     build_project_details_keyboard,
@@ -231,6 +232,8 @@ def make_project_callback_context(projects: list[Project], records: list[TaskRec
 
 def write_successful_post_run_artifacts(workspace: Path) -> None:
     workspace.mkdir()
+    (workspace / "branch_name.txt").write_text("agent/TASK-0013-post-run\n", encoding="utf-8")
+    (workspace / "input.md").write_text("В pdlc-bot улучшить post-run UX\n", encoding="utf-8")
     (workspace / "codex_exit_code.txt").write_text("0\n", encoding="utf-8")
     (workspace / "diff.patch").write_text("diff --git a/app.py b/app.py\n+change\n", encoding="utf-8")
     (workspace / "test_report.md").write_text("Exit code: 0\n", encoding="utf-8")
@@ -605,16 +608,26 @@ def test_codex_post_run_keyboard_contains_safe_first_layer_actions():
     data = button_data(markup)
     assert "🔍 Diff" in texts
     assert "🧪 Тесты" in texts
+    assert "🔁 Доработать" in texts
     assert "✅ Коммит" in texts
     assert "🧹 Откат" in texts
     assert "task:show_diff:TASK-0013" in data
     assert "task:tests_again:TASK-0013" in data
+    assert "task:fix:TASK-0013" in data
     assert "task:commit:TASK-0013" in data
     assert "task:discard:TASK-0013" in data
     assert "task:artifacts:TASK-0013" in data
     assert "tasks:recent" in data
     assert "menu:show" in data
     assert all(len(item.encode("utf-8")) <= 64 for item in data)
+
+
+def test_fix_prompt_ready_keyboard_contains_run_fix_button():
+    markup = build_fix_prompt_ready_keyboard("TASK-0013")
+
+    assert button_text(markup) == ["▶️ Запустить доработку", "📄 Детали", "🗂 Последние", "🏠 Меню"]
+    assert button_data(markup) == ["task:run_fix:TASK-0013", "task:details:TASK-0013", "tasks:recent", "menu:show"]
+    assert all(len(item.encode("utf-8")) <= 64 for item in button_data(markup))
 
 
 def test_task_result_state_ready_for_post_run_actions(tmp_path):
@@ -680,6 +693,67 @@ def test_run_tests_again_callback_keeps_post_run_buttons(monkeypatch, tmp_path):
 
     assert "Повторный запуск тестов пока не реализован." in update.callback_query.edits[-1]["text"]
     assert "🔍 Diff" in button_text(update.callback_query.edits[-1]["reply_markup"])
+
+
+def test_fix_callback_shows_command_format(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeCallbackUpdate("task:fix:TASK-0013")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    assert "/fix TASK-0013 <замечания>" in update.callback_query.edits[-1]["text"]
+    assert "fix_prompt.md" in update.callback_query.edits[-1]["text"]
+    assert "🔁 Доработать" in button_text(update.callback_query.edits[-1]["reply_markup"])
+
+
+def test_run_fix_callback_is_placeholder(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    update = FakeCallbackUpdate("task:run_fix:TASK-0013")
+
+    asyncio.run(handle_callback(update, FakeContext()))
+
+    assert "ещё не реализован" in update.callback_query.edits[-1]["text"]
+    assert "▶️ Запустить доработку" in button_text(update.callback_query.edits[-1]["reply_markup"])
+
+
+def test_fix_command_without_task_id_shows_usage(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    update = FakeUpdate("/fix")
+
+    asyncio.run(fix(update, SimpleNamespace(args=[], application=SimpleNamespace(bot_data={"orchestrator": object()}))))
+
+    assert update.message.replies[-1]["text"] == "Использование: /fix TASK-0001 <замечания>"
+
+
+def test_fix_command_missing_task_shows_not_found(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    record = make_task_with_input(tmp_path, "TASK-0013", "В pdlc-bot тест")
+    update = FakeUpdate("/fix TASK-9999 поправь")
+
+    asyncio.run(fix(update, make_callback_context(record, args=["TASK-9999", "поправь"])))
+
+    assert update.message.replies[-1]["text"] == "Задача TASK-9999 не найдена."
+
+
+def test_fix_command_creates_review_comments_and_fix_prompt(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeUpdate("/fix TASK-0013 сократи кнопку")
+
+    asyncio.run(fix(update, make_callback_context(record, args=["TASK-0013", "сократи", "кнопку"])))
+
+    assert update.message.replies[-1]["text"].startswith("Fix prompt prepared.")
+    assert (workspace / "review_comments.md").read_text(encoding="utf-8") == "сократи кнопку\n"
+    fix_prompt = (workspace / "fix_prompt.md").read_text(encoding="utf-8")
+    assert "сократи кнопку" in fix_prompt
+    assert "Continue on existing agent branch" in fix_prompt
+    assert "Do not commit, push, or deploy." in fix_prompt
+    assert "▶️ Запустить доработку" in button_text(update.message.replies[-1]["reply_markup"])
 
 
 def test_task_details_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_path):

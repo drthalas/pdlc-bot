@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.codex_runner import build_codex_runner_response
+from app.fix_loop import prepare_fix_prompt
 from app.orchestrator import Orchestrator
 from app.post_run_controls import (
     build_commit_message,
@@ -26,6 +27,7 @@ from app.telegram_ui import (
     build_codex_post_run_keyboard,
     build_commit_confirm_keyboard,
     build_discard_confirm_keyboard,
+    build_fix_prompt_ready_keyboard,
     build_main_menu_keyboard,
     build_persistent_menu_keyboard,
     build_project_details_keyboard,
@@ -217,6 +219,29 @@ async def prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     response = build_prompt_response(orchestrator.store, task_id)
     reply_markup = build_task_action_keyboard(record) if record is not None else build_persistent_menu_keyboard()
     await update.message.reply_text(response.message, reply_markup=reply_markup)
+
+
+async def fix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Использование: /fix TASK-0001 <замечания>",
+            reply_markup=build_persistent_menu_keyboard(),
+        )
+        return
+
+    task_id = context.args[0].strip()
+    review_comments = " ".join(context.args[1:]).strip()
+    orchestrator: Orchestrator = context.application.bot_data["orchestrator"]
+    record = orchestrator.store.get_task(task_id)
+    if record is None:
+        await update.message.reply_text(f"Задача {task_id} не найдена.", reply_markup=build_persistent_menu_keyboard())
+        return
+
+    result = prepare_fix_prompt(record, review_comments)
+    reply_markup = build_fix_prompt_ready_keyboard(task_id) if result.ok else build_task_action_keyboard(record)
+    await update.message.reply_text(result.message, reply_markup=reply_markup)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -427,6 +452,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
+    if data.startswith("task:fix:"):
+        task_id = data.removeprefix("task:fix:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
+            return
+        await query.edit_message_text(
+            (
+                "Отправьте замечания командой:\n\n"
+                f"`/fix {task_id} <замечания>`\n\n"
+                "Я сохраню review comments и подготовлю `fix_prompt.md` для Codex."
+            ),
+            reply_markup=build_task_action_keyboard(record),
+        )
+        return
+
+    if data.startswith("task:run_fix:"):
+        task_id = data.removeprefix("task:run_fix:")
+        await query.edit_message_text(
+            "Автоматический повторный запуск Codex для fix loop ещё не реализован.",
+            reply_markup=build_fix_prompt_ready_keyboard(task_id),
+        )
+        return
+
     if data.startswith("task:commit:"):
         task_id = data.removeprefix("task:commit:")
         record = orchestrator.store.get_task(task_id)
@@ -518,6 +567,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("runbook", runbook))
     application.add_handler(CommandHandler("task", task))
     application.add_handler(CommandHandler("prompt", prompt))
+    application.add_handler(CommandHandler("fix", fix))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     return application

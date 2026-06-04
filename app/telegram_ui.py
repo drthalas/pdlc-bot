@@ -162,6 +162,7 @@ def build_codex_post_run_keyboard(task_id: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("🔍 Diff", callback_data=f"task:show_diff:{task_id}"),
                 InlineKeyboardButton("🧪 Тесты", callback_data=f"task:tests_again:{task_id}"),
             ],
+            [InlineKeyboardButton("🔁 Доработать", callback_data=f"task:fix:{task_id}")],
             [
                 InlineKeyboardButton("✅ Коммит", callback_data=f"task:commit:{task_id}"),
                 InlineKeyboardButton("🧹 Откат", callback_data=f"task:discard:{task_id}"),
@@ -268,6 +269,19 @@ def build_task_subview_keyboard(task_id: str) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("⬅️ Назад", callback_data=f"task:details:{task_id}")],
             [
+                InlineKeyboardButton("🗂 Последние", callback_data="tasks:recent"),
+                InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
+            ],
+        ]
+    )
+
+
+def build_fix_prompt_ready_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("▶️ Запустить доработку", callback_data=f"task:run_fix:{task_id}")],
+            [
+                InlineKeyboardButton("📄 Детали", callback_data=f"task:details:{task_id}"),
                 InlineKeyboardButton("🗂 Последние", callback_data="tasks:recent"),
                 InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
             ],

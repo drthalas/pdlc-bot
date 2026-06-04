@@ -14,7 +14,7 @@ The prompt-building standard is documented in [docs/PROMPT_BUILDER.md](docs/PROM
 
 ## Features
 
-- Telegram commands: `/start`, `/projects`, `/status`, `/tasks`, `/task <TASK-ID>`, `/prompt <TASK-ID>`
+- Telegram commands: `/start`, `/projects`, `/status`, `/tasks`, `/task <TASK-ID>`, `/prompt <TASK-ID>`, `/fix <TASK-ID> <замечания>`
 - Telegram text messages become local development tasks
 - Optional Telegram user allowlist
 - YAML project registry with names and aliases
@@ -219,8 +219,17 @@ After a successful `codex_run` with a non-empty `diff.patch` and passing tests, 
 
 - `🔍 Diff`: displays `diff.patch` from the task artifacts, truncated for Telegram when needed.
 - `🧪 Тесты`: currently returns `Повторный запуск тестов пока не реализован.`
+- `🔁 Доработать`: shows how to send review comments for a fix loop.
 - `✅ Коммит`: asks for confirmation before running a local commit.
 - `🧹 Откат`: asks for confirmation before discarding the branch changes.
+
+Fix Loop v0.1 is prepare-only. Use:
+
+```text
+/fix TASK-XXXX <замечания>
+```
+
+The bot saves `review_comments.md` and creates `fix_prompt.md` in the task workspace. The fix prompt tells Codex to continue on the existing `agent/TASK-*` branch, keep scope limited to the review comments, run tests, and not commit, push, or deploy. Automatic rerun with `▶️ Запустить доработку` is not implemented yet.
 
 Commit, push, and discard are intentionally separate steps. Confirm commit only runs on the current `agent/TASK-*` branch matching the task artifact, stages only allowed changed files explicitly, then creates a local commit with message `TASK-XXXX: <short task title>`. It does not push. After a successful commit, Telegram shows a separate `📤 Push branch` button. Push is disabled by default with `PDLC_ENABLE_GIT_PUSH=false`. When enabled with `PDLC_ENABLE_GIT_PUSH=true`, push still requires confirmation and runs only `git push -u origin <branch>`. Discard also requires confirmation and runs `git reset --hard` followed by `git checkout main`, only from the matching `agent/TASK-*` branch.
 

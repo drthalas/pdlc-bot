@@ -2,7 +2,7 @@
 
 Implementation status: started.
 
-Current stage: disabled-by-default UI skeleton plus safe runner modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, `git_check` can run a read-only `git status --porcelain` check before preparing artifacts, `branch_create` can create a local branch after a clean git check, and `codex_run` can execute Codex CLI after branch creation. Post-run controls can show the saved diff, request a confirmed local commit, request a separate confirmed branch push, or request a confirmed discard. No PR or deploy happens.
+Current stage: disabled-by-default UI skeleton plus safe runner modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, `git_check` can run a read-only `git status --porcelain` check before preparing artifacts, `branch_create` can create a local branch after a clean git check, and `codex_run` can execute Codex CLI after branch creation. Post-run controls can show the saved diff, prepare a fix prompt from review comments, request a confirmed local commit, request a separate confirmed branch push, or request a confirmed discard. No PR or deploy happens.
 
 ## Goal
 
@@ -91,11 +91,17 @@ When the user clicks `Run Codex`:
   ```text
   🔍 Diff
   🧪 Тесты
+  🔁 Доработать
   ✅ Коммит
   🧹 Откат
   ```
 - `Show diff` reads the task artifact `diff.patch` and displays it in Telegram, truncated when needed. If the patch is missing, the bot falls back to available artifact context.
 - `Run tests again` is a placeholder and currently responds `Повторный запуск тестов пока не реализован.`
+- Fix Loop v0.1 is prepare-only. `🔁 Доработать` asks the user to send review comments with:
+  ```text
+  /fix TASK-XXXX <замечания>
+  ```
+  The command writes `review_comments.md` and `fix_prompt.md` in the task workspace. `fix_prompt.md` instructs Codex to continue on the existing `agent/TASK-*` branch, keep scope limited to the review comments, run tests, and not commit, push, or deploy. `▶️ Запустить доработку` is a placeholder and does not rerun Codex yet.
 - `Commit changes` never commits directly. It first shows a confirmation button. Confirm commit:
   - reads the current git branch with `git branch --show-current`;
   - requires the current branch to match the task `branch_name.txt`;
@@ -156,6 +162,8 @@ Codex Runner should save:
 - `diff.patch`
 - `test_report.md`
 - `developer_report.md`
+- `review_comments.md`
+- `fix_prompt.md`
 
 ## Branch naming
 
@@ -199,6 +207,7 @@ Next buttons:
 
 - `🔍 Diff`
 - `🧪 Тесты`
+- `🔁 Доработать`
 - `✅ Коммит`
 - `🧹 Откат`
 
@@ -217,4 +226,4 @@ After confirmed commit succeeds:
 7. Logs/artifacts capture. Started with `codex_stdout.log`, `codex_stderr.log`, `codex_exit_code.txt`, `diff.patch`, `test_report.md`, and `developer_report.md`.
 8. Test runner. Started with configured project commands and fallback commands.
 9. Telegram report. Started with post-run controls for show diff, confirmed commit, separate confirmed push, and confirmed discard.
-10. Fix loop.
+10. Fix loop. Started with prepare-only `review_comments.md` and `fix_prompt.md`; automatic rerun is the next step.
