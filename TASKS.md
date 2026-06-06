@@ -12,6 +12,7 @@
 - Codex Runner git_check mode.
 - Codex Runner branch_create mode.
 - Codex Runner codex_run mode.
+- Rule-based Reviewer v0.1 with `review_report.md`.
 - Safe post-run controls.
 - State-aware task actions after Codex runs.
 - Prompt Builder standard for structured Codex prompts.
@@ -22,6 +23,7 @@
 
 - Keep improving generated prompt quality from short Telegram requests.
 - Tighten Codex Runner review/fix loop.
+- Add LLM-assisted Reviewer as an optional future layer after the rule-based reviewer.
 - Add Tester/QA Agent as the next major safety layer.
 
 ## Later

@@ -11,6 +11,7 @@ from app.post_run_controls import (
     task_result_state,
 )
 from app.project_registry import Project
+from app.reviewer import REVIEW_STATUS_CHANGES_REQUESTED, review_status_from_report
 from app.task_store import TaskRecord
 from app.task_messages import task_status_display, task_title
 
@@ -162,9 +163,28 @@ def build_codex_post_run_keyboard(task_id: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("🔍 Diff", callback_data=f"task:show_diff:{task_id}"),
                 InlineKeyboardButton("🧪 Тесты", callback_data=f"task:tests_again:{task_id}"),
             ],
-            [InlineKeyboardButton("🔁 Доработать", callback_data=f"task:fix:{task_id}")],
+            [InlineKeyboardButton("📝 Review", callback_data=f"task:review:{task_id}")],
             [
                 InlineKeyboardButton("✅ Коммит", callback_data=f"task:commit:{task_id}"),
+                InlineKeyboardButton("🧹 Откат", callback_data=f"task:discard:{task_id}"),
+            ],
+            [InlineKeyboardButton("🛠 Детали", callback_data=f"task:artifacts:{task_id}")],
+            [
+                InlineKeyboardButton("⬅️ Назад", callback_data="tasks:recent"),
+                InlineKeyboardButton("🗂 Последние", callback_data="tasks:recent"),
+                InlineKeyboardButton("🏠 Меню", callback_data="menu:show"),
+            ],
+        ]
+    )
+
+
+def build_codex_changes_requested_keyboard(task_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("📄 Review report", callback_data=f"task:review:{task_id}")],
+            [InlineKeyboardButton("🔁 Доработать", callback_data=f"task:fix:{task_id}")],
+            [
+                InlineKeyboardButton("🔍 Diff", callback_data=f"task:show_diff:{task_id}"),
                 InlineKeyboardButton("🧹 Откат", callback_data=f"task:discard:{task_id}"),
             ],
             [InlineKeyboardButton("🛠 Детали", callback_data=f"task:artifacts:{task_id}")],
@@ -207,12 +227,14 @@ def build_running_task_keyboard(task_id: str) -> InlineKeyboardMarkup:
 
 def build_task_action_keyboard(task: TaskRecord) -> InlineKeyboardMarkup:
     state = task_result_state(task)
-    if state == TASK_RESULT_READY_FOR_POST_RUN_ACTIONS:
-        return build_codex_post_run_keyboard(task.task_id)
     if state == TASK_RESULT_COMMITTED:
         return build_committed_task_keyboard(task.task_id)
     if state == TASK_RESULT_RUNNING:
         return build_running_task_keyboard(task.task_id)
+    if review_status_from_report(task) == REVIEW_STATUS_CHANGES_REQUESTED:
+        return build_codex_changes_requested_keyboard(task.task_id)
+    if state == TASK_RESULT_READY_FOR_POST_RUN_ACTIONS:
+        return build_codex_post_run_keyboard(task.task_id)
     return build_prompt_ready_task_keyboard(task.task_id)
 
 

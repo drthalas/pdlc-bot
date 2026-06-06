@@ -17,6 +17,7 @@ from app.post_run_controls import (
     discard_task_changes,
     push_task_branch,
 )
+from app.reviewer import build_review_report_message
 from app.task_messages import build_prompt_response, format_task_artifacts_response, format_task_details_response
 from app.task_workspace import list_artifacts
 from app.telegram_ui import (
@@ -99,6 +100,7 @@ def final_codex_status_from_response(response: str) -> str:
         "cannot continue",
         "Codex failed",
         "Tests: failed",
+        "Review: changes requested",
         "Branch was not created",
     )
     return "failed" if any(marker in response for marker in failure_markers) else "prompt_ready"
@@ -440,15 +442,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
         await query.edit_message_text(
             build_show_diff_message(record),
-            reply_markup=build_codex_post_run_keyboard(record.task_id),
+            reply_markup=build_task_action_keyboard(record),
         )
         return
 
     if data.startswith("task:tests_again:"):
         task_id = data.removeprefix("task:tests_again:")
+        record = orchestrator.store.get_task(task_id)
         await query.edit_message_text(
             "Повторный запуск тестов пока не реализован.",
-            reply_markup=build_codex_post_run_keyboard(task_id),
+            reply_markup=build_task_action_keyboard(record) if record is not None else build_codex_post_run_keyboard(task_id),
+        )
+        return
+
+    if data.startswith("task:review:"):
+        task_id = data.removeprefix("task:review:")
+        record = orchestrator.store.get_task(task_id)
+        if record is None:
+            await query.edit_message_text(f"Задача {task_id} не найдена.")
+            return
+        await query.edit_message_text(
+            build_review_report_message(record),
+            reply_markup=build_task_action_keyboard(record),
         )
         return
 

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from app.reviewer import format_review_result_line, run_reviewer
 from app.task_store import TaskRecord
 
 
@@ -134,6 +135,8 @@ class CodexRunResult:
     diff_path: Path | None = None
     test_report_path: Path | None = None
     developer_report_path: Path | None = None
+    review_report_path: Path | None = None
+    review_status: str | None = None
     codex_exit_code: int | None = None
     diff_stat: str = ""
     error_message: str | None = None
@@ -708,7 +711,31 @@ def write_codex_run_artifacts(
     )
     developer_report_path = workspace_path / DEVELOPER_REPORT_FILENAME
     developer_report_path.write_text(_format_developer_report(partial_result), encoding="utf-8")
-    return partial_result
+    review_result = run_reviewer(task)
+    return CodexRunResult(
+        is_clean=partial_result.is_clean,
+        branch_created=partial_result.branch_created,
+        codex_ran=partial_result.codex_ran,
+        tests_passed=partial_result.tests_passed,
+        git_status_before_path=partial_result.git_status_before_path,
+        branch_name=partial_result.branch_name,
+        branch_name_path=partial_result.branch_name_path,
+        branch_stdout_path=partial_result.branch_stdout_path,
+        branch_stderr_path=partial_result.branch_stderr_path,
+        branch_exit_code_path=partial_result.branch_exit_code_path,
+        codex_stdout_path=partial_result.codex_stdout_path,
+        codex_stderr_path=partial_result.codex_stderr_path,
+        codex_exit_code_path=partial_result.codex_exit_code_path,
+        git_status_after_path=partial_result.git_status_after_path,
+        diff_path=partial_result.diff_path,
+        test_report_path=partial_result.test_report_path,
+        developer_report_path=partial_result.developer_report_path,
+        review_report_path=review_result.report_path,
+        review_status=review_result.status,
+        codex_exit_code=partial_result.codex_exit_code,
+        diff_stat=partial_result.diff_stat,
+        error_message=partial_result.error_message,
+    )
 
 
 def write_codex_branch_prepare_artifacts(task: TaskRecord) -> CodexBranchPrepareResult:
@@ -880,12 +907,14 @@ def build_codex_run_message(task: TaskRecord, result: CodexRunResult) -> str:
 
     status = "Codex finished." if result.codex_exit_code == 0 else "Codex failed."
     tests_status = "passed" if result.tests_passed else "failed"
+    review_status = format_review_result_line(result.review_status)
     return (
         "Codex Runner codex_run mode.\n"
         f"{status}\n"
         f"Branch: {result.branch_name}\n"
         f"Codex exit code: {result.codex_exit_code}\n"
         f"Tests: {tests_status}\n"
+        f"{review_status}\n"
         "No commit/push/deploy was performed.\n\n"
         "Diff stat:\n"
         f"{result.diff_stat.strip() or 'no diff'}\n\n"
@@ -901,7 +930,8 @@ def build_codex_run_message(task: TaskRecord, result: CodexRunResult) -> str:
         f"- {result.git_status_after_path}\n"
         f"- {result.diff_path}\n"
         f"- {result.test_report_path}\n"
-        f"- {result.developer_report_path}"
+        f"- {result.developer_report_path}\n"
+        f"- {result.review_report_path}"
     )
 
 

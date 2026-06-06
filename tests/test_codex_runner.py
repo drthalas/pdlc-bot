@@ -593,11 +593,15 @@ def test_codex_run_clean_flow_creates_branch_invokes_codex_and_tests(monkeypatch
     assert result.diff_path.read_text(encoding="utf-8").startswith("diff --git")
     assert "pytest -q" in result.test_report_path.read_text(encoding="utf-8")
     assert "No commit, push, PR, or deploy was performed." in result.developer_report_path.read_text(encoding="utf-8")
+    assert result.review_status == "approved"
+    assert result.review_report_path.read_text(encoding="utf-8").startswith("# Review report: TASK-0007")
 
     message = build_codex_run_message(task, result)
     assert "Codex finished" in message
     assert "Branch: agent/TASK-0007-add-persistent-menu" in message
     assert "Tests: passed" in message
+    assert "✅ Review: approved" in message
+    assert "review_report.md" in message
     assert "No commit/push/deploy was performed" in message
 
 
@@ -655,7 +659,9 @@ def test_codex_run_non_zero_exit_saves_logs_and_report(monkeypatch, tmp_path):
     assert result.codex_exit_code == 2
     assert result.codex_stderr_path.read_text(encoding="utf-8") == "codex failed\n"
     assert "Codex exited non-zero" in result.developer_report_path.read_text(encoding="utf-8")
+    assert result.review_status == "changes_requested"
     assert "Codex failed" in build_codex_run_message(task, result)
+    assert "⚠️ Review: changes requested" in build_codex_run_message(task, result)
 
 
 def test_codex_run_does_not_call_commit_push_or_deploy(monkeypatch, tmp_path):

@@ -215,13 +215,17 @@ It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
 
 Task UI is state-aware after a Codex run. If `codex_exit_code.txt` is `0`, `diff.patch` is non-empty, and `test_report.md` passed, `/task`, `/prompt`, task details, and diff views show post-run controls instead of offering another Codex run.
 
+Reviewer v0.1 runs automatically after `codex_run`. It is rule-based and does not call an LLM or external API. The reviewer reads task artifacts, checks Codex exit code, tests, diff safety, sensitive paths, and accidental commit/push/deploy artifacts, then writes `review_report.md`.
+
 After a successful `codex_run` with a non-empty `diff.patch` and passing tests, Telegram shows post-run controls:
 
 - `🔍 Diff`: displays `diff.patch` from the task artifacts, truncated for Telegram when needed.
 - `🧪 Тесты`: currently returns `Повторный запуск тестов пока не реализован.`
-- `🔁 Доработать`: shows how to send review comments for a fix loop.
+- `📝 Review`: displays `review_report.md`; if it is missing, the rule-based reviewer recreates it from existing artifacts.
 - `✅ Коммит`: asks for confirmation before running a local commit.
 - `🧹 Откат`: asks for confirmation before discarding the branch changes.
+
+If Reviewer v0.1 returns `changes_requested`, Telegram shows `📄 Review report`, `🔁 Доработать`, `🔍 Diff`, and `🧹 Откат`. Use the review report as input for the `/fix` command. LLM-assisted review remains a future improvement.
 
 Fix Loop v0.1 is prepare-only. Use:
 

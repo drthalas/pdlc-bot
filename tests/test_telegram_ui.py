@@ -24,6 +24,7 @@ from app.telegram_ui import (
     LEGACY_TASKS_BUTTON,
     build_add_project_stub_keyboard,
     build_add_project_stub_message,
+    build_codex_changes_requested_keyboard,
     build_archived_tasks_keyboard,
     build_archived_tasks_message,
     build_codex_post_run_keyboard,
@@ -238,6 +239,16 @@ def write_successful_post_run_artifacts(workspace: Path) -> None:
     (workspace / "diff.patch").write_text("diff --git a/app.py b/app.py\n+change\n", encoding="utf-8")
     (workspace / "test_report.md").write_text("Exit code: 0\n", encoding="utf-8")
     (workspace / "codex_prompt.md").write_text("Use Codex.\n", encoding="utf-8")
+
+
+def write_changes_requested_review_report(workspace: Path) -> None:
+    (workspace / "review_report.md").write_text(
+        "# Review report: TASK-0013\n\n"
+        "Status: changes_requested\n\n"
+        "Summary:\n"
+        "Reviewer found blocking issues.\n",
+        encoding="utf-8",
+    )
 
 
 def test_start_message_mentions_main_actions():
@@ -608,17 +619,31 @@ def test_codex_post_run_keyboard_contains_safe_first_layer_actions():
     data = button_data(markup)
     assert "🔍 Diff" in texts
     assert "🧪 Тесты" in texts
-    assert "🔁 Доработать" in texts
+    assert "📝 Review" in texts
     assert "✅ Коммит" in texts
     assert "🧹 Откат" in texts
     assert "task:show_diff:TASK-0013" in data
     assert "task:tests_again:TASK-0013" in data
-    assert "task:fix:TASK-0013" in data
+    assert "task:review:TASK-0013" in data
     assert "task:commit:TASK-0013" in data
     assert "task:discard:TASK-0013" in data
     assert "task:artifacts:TASK-0013" in data
     assert "tasks:recent" in data
     assert "menu:show" in data
+    assert all(len(item.encode("utf-8")) <= 64 for item in data)
+
+
+def test_changes_requested_keyboard_contains_review_and_fix_actions():
+    markup = build_codex_changes_requested_keyboard("TASK-0013")
+
+    texts = button_text(markup)
+    data = button_data(markup)
+    assert "📄 Review report" in texts
+    assert "🔁 Доработать" in texts
+    assert "🔍 Diff" in texts
+    assert "🧹 Откат" in texts
+    assert "task:review:TASK-0013" in data
+    assert "task:fix:TASK-0013" in data
     assert all(len(item.encode("utf-8")) <= 64 for item in data)
 
 
@@ -695,6 +720,22 @@ def test_run_tests_again_callback_keeps_post_run_buttons(monkeypatch, tmp_path):
     assert "🔍 Diff" in button_text(update.callback_query.edits[-1]["reply_markup"])
 
 
+def test_review_callback_creates_and_shows_review_report(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeCallbackUpdate("task:review:TASK-0013")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    text = update.callback_query.edits[-1]["text"]
+    assert "Review report: TASK-0013" in text
+    assert "Status: approved" in text
+    assert (workspace / "review_report.md").exists()
+    assert "📝 Review" in button_text(update.callback_query.edits[-1]["reply_markup"])
+
+
 def test_fix_callback_shows_command_format(monkeypatch, tmp_path):
     monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
     workspace = tmp_path / "TASK-0013"
@@ -706,7 +747,7 @@ def test_fix_callback_shows_command_format(monkeypatch, tmp_path):
 
     assert "/fix TASK-0013 <замечания>" in update.callback_query.edits[-1]["text"]
     assert "fix_prompt.md" in update.callback_query.edits[-1]["text"]
-    assert "🔁 Доработать" in button_text(update.callback_query.edits[-1]["reply_markup"])
+    assert "📝 Review" in button_text(update.callback_query.edits[-1]["reply_markup"])
 
 
 def test_run_fix_callback_is_placeholder(monkeypatch):
@@ -768,6 +809,22 @@ def test_task_details_after_codex_run_shows_post_run_buttons(monkeypatch, tmp_pa
     texts = button_text(update.callback_query.edits[-1]["reply_markup"])
     assert "🔍 Diff" in texts
     assert "▶️ Запустить Codex" not in texts
+
+
+def test_task_details_changes_requested_shows_fix_button(monkeypatch, tmp_path):
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    workspace = tmp_path / "TASK-0013"
+    write_successful_post_run_artifacts(workspace)
+    write_changes_requested_review_report(workspace)
+    record = TaskRecord("TASK-0013", "pdlc-bot", "prompt_ready", str(workspace), "2026-05-30T00:00:00+00:00")
+    update = FakeCallbackUpdate("task:details:TASK-0013")
+
+    asyncio.run(handle_callback(update, make_callback_context(record)))
+
+    texts = button_text(update.callback_query.edits[-1]["reply_markup"])
+    assert "📄 Review report" in texts
+    assert "🔁 Доработать" in texts
+    assert "✅ Коммит" not in texts
 
 
 def test_task_artifacts_callback_shows_technical_files(monkeypatch, tmp_path):

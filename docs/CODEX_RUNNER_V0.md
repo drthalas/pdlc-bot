@@ -2,7 +2,7 @@
 
 Implementation status: started.
 
-Current stage: disabled-by-default UI skeleton plus safe runner modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, `git_check` can run a read-only `git status --porcelain` check before preparing artifacts, `branch_create` can create a local branch after a clean git check, and `codex_run` can execute Codex CLI after branch creation. Post-run controls can show the saved diff, prepare a fix prompt from review comments, request a confirmed local commit, request a separate confirmed branch push, or request a confirmed discard. No PR or deploy happens.
+Current stage: disabled-by-default UI skeleton plus safe runner modes. The Telegram button exists, the disabled response is safe, `prepare` can write manual-run artifacts, `branch_prepare` can write branch-preparation artifacts, `git_check` can run a read-only `git status --porcelain` check before preparing artifacts, `branch_create` can create a local branch after a clean git check, and `codex_run` can execute Codex CLI after branch creation. Reviewer v0.1 runs rule-based checks after `codex_run` and writes `review_report.md`. Post-run controls can show the saved diff, show the review report, prepare a fix prompt from review comments, request a confirmed local commit, request a separate confirmed branch push, or request a confirmed discard. No PR or deploy happens.
 
 ## Goal
 
@@ -85,17 +85,26 @@ When the user clicks `Run Codex`:
   PDLC_CODEX_RUNNER_MODE=codex_run
   <codex_bin> exec -C <project_local_path> - < <workspace>/codex_prompt.md
   ```
-  The Codex subprocess uses `shell=False`, non-interactive `codex exec`, stdin from `codex_prompt.md`, and a configurable timeout (`PDLC_CODEX_TIMEOUT_SECONDS`, default `900`). The top-level interactive `codex` command must not be used for this path because it expects a terminal. After Codex exits, the runner saves `git diff`, `git diff --stat`, runs project test commands, and writes test/developer reports. It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
+  The Codex subprocess uses `shell=False`, non-interactive `codex exec`, stdin from `codex_prompt.md`, and a configurable timeout (`PDLC_CODEX_TIMEOUT_SECONDS`, default `900`). The top-level interactive `codex` command must not be used for this path because it expects a terminal. After Codex exits, the runner saves `git diff`, `git diff --stat`, runs project test commands, writes test/developer reports, and runs Reviewer v0.1. It still does not run `run_codex.sh`, commit, push, create PRs, or deploy.
+- Reviewer v0.1 is rule-based and local-only. It reads `codex_exit_code.txt`, `test_report.md`, `developer_report.md`, `diff.patch`, and `git_status_after.txt` when available, then writes `review_report.md`. It returns `approved` when Codex exits with `0`, tests pass, no protected files are touched, and no commit/push/deploy artifacts are present. It returns `changes_requested` for Codex failure, test failure, sensitive file changes, or evidence of commit/push/deploy before approval. It may add warnings for large diffs or Telegram UX text that needs Russian-language review.
 - Task UI is state-aware after Codex execution. If `codex_exit_code.txt` is `0`, `diff.patch` is non-empty, and `test_report.md` contains only passing exit codes, `/task`, `/prompt`, task details, and diff views show post-run controls instead of another Run Codex button.
 - After successful `codex_run`, Telegram shows:
   ```text
   🔍 Diff
   🧪 Тесты
-  🔁 Доработать
+  📝 Review
   ✅ Коммит
   🧹 Откат
   ```
+- If `review_report.md` says `changes_requested`, Telegram shows:
+  ```text
+  📄 Review report
+  🔁 Доработать
+  🔍 Diff
+  🧹 Откат
+  ```
 - `Show diff` reads the task artifact `diff.patch` and displays it in Telegram, truncated when needed. If the patch is missing, the bot falls back to available artifact context.
+- `Review` displays `review_report.md`. If the report is missing, the bot recreates it from existing artifacts with the rule-based reviewer.
 - `Run tests again` is a placeholder and currently responds `Повторный запуск тестов пока не реализован.`
 - Fix Loop v0.1 is prepare-only. `🔁 Доработать` asks the user to send review comments with:
   ```text
